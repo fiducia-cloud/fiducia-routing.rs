@@ -1,0 +1,82 @@
+//! Shared key → shard routing for fiducia.cloud.
+//!
+//! Every component must map a key to the same shard, or the cluster splits its
+//! brain: the load balancer would route a request to one shard while the data
+//! plane stored it in another. This crate is the **single source of truth** for
+//! that mapping so it physically cannot drift —
+//! [`fiducia-node`](https://github.com/fiducia-cloud/fiducia-node.rs),
+//! [`fiducia-brain`](https://github.com/fiducia-cloud/fiducia-brain.rs), and
+//! [`fiducia-load-balance`](https://github.com/fiducia-cloud/fiducia-load-balance.rs)
+//! all depend on it instead of carrying their own copy.
+//!
+//! Two things only:
+//!   * [`fnv1a`] — the hash. **Frozen.** Changing it remaps every key in the
+//!     cluster (a full data migration), so the golden tests below pin its output.
+//!   * [`shard_for`] — `hash(key) % shard_count`.
+//!
+//! `shard_count` is *not* defined here — it's cluster configuration owned by the
+//! brain ([`fiducia-brain`]'s `ClusterConfig`), passed in by the caller. It is
+//! fixed for the cluster's life, which is what makes `key → shard` stable while
+//! the node count scales.
+
+/// Identifier of a shard (one independent Raft group).
+pub type ShardId = u32;
+
+/// Map a key to its shard.
+///
+/// # Panics
+/// Panics if `shard_count == 0` — a cluster always has at least one shard, and a
+/// modulo by zero is a configuration bug worth failing loudly on.
+#[inline]
+pub fn shard_for(key: &str, shard_count: u32) -> ShardId {
+    assert!(shard_count > 0, "shard_count must be > 0");
+    fnv1a(key) % shard_count
+}
+
+/// FNV-1a (32-bit) — small, dependency-free, well-distributed, and identical
+/// across processes and architectures. **Do not change** the constants or the
+/// byte order; the golden vectors in the tests exist to stop exactly that.
+#[inline]
+pub fn fnv1a(s: &str) -> u32 {
+    let mut hash: u32 = 0x811c_9dc5; // FNV offset basis
+    for b in s.bytes() {
+        hash ^= b as u32;
+        hash = hash.wrapping_mul(0x0100_0193); // FNV prime
+    }
+    hash
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deterministic_and_bounded() {
+        for key in ["orders", "checkout", "orders/checkout", "api", "cleanup", ""] {
+            for n in [1u32, 4, 16, 256, 1024] {
+                assert!(shard_for(key, n) < n);
+                assert_eq!(shard_for(key, n), shard_for(key, n));
+            }
+        }
+    }
+
+    /// Golden vectors — these pin the hash. If one of these ever changes, the
+    /// mapping changed and every key in every running cluster just moved. Treat
+    /// a failure here as "you must not ship this".
+    #[test]
+    fn golden_vectors() {
+        // Locked from the running node/LB/brain (shard_count = 8).
+        assert_eq!(shard_for("checkout", 8), 1);
+        assert_eq!(shard_for("orders", 8), 4);
+        assert_eq!(shard_for("orders/checkout", 8), 5);
+
+        // Raw hash, independent of shard_count.
+        assert_eq!(fnv1a(""), 0x811c_9dc5);
+    }
+
+    #[test]
+    #[should_panic]
+    fn zero_shard_count_panics() {
+        let _ = shard_for("x", 0);
+    }
+}
