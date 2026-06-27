@@ -93,6 +93,51 @@ mod tests {
         }
     }
 
+    #[test]
+    fn region_index_lookup() {
+        let regions = ["gcp", "aws", "hetzner"];
+        assert_eq!(region_index("gcp", &regions), Some(0));
+        assert_eq!(region_index("hetzner", &regions), Some(2));
+        assert_eq!(region_index("azure", &regions), None);
+    }
+
+    #[test]
+    fn region_sharding_lands_in_the_region_band() {
+        // 3 regions, 12 shards -> bands [0,4) [4,8) [8,12).
+        let (rc, n) = (3u32, 12u32);
+        for key in ["orders/checkout", "api", "user-42", "x"] {
+            assert!((0..4).contains(&shard_for_region(0, rc, key, n)), "region 0 band");
+            assert!((4..8).contains(&shard_for_region(1, rc, key, n)), "region 1 band");
+            assert!((8..12).contains(&shard_for_region(2, rc, key, n)), "region 2 band");
+        }
+    }
+
+    #[test]
+    fn same_key_different_region_is_geographically_local() {
+        // The whole point: a client routes to a shard in ITS region (closer
+        // leader). The same key in different regions therefore lands on
+        // different, region-local shards.
+        let (rc, n) = (3u32, 12u32);
+        let g = shard_for_region(0, rc, "orders/checkout", n);
+        let a = shard_for_region(1, rc, "orders/checkout", n);
+        let h = shard_for_region(2, rc, "orders/checkout", n);
+        assert_ne!(g, a);
+        assert_ne!(a, h);
+        assert_ne!(g, h);
+    }
+
+    #[test]
+    fn region_sharding_bounded_and_remainder_in_last_band() {
+        // 3 regions, 16 shards -> bands of 5,5,6 (last absorbs remainder).
+        let (rc, n) = (3u32, 16u32);
+        for key in ["a", "bb", "ccc", "orders", "lock-9"] {
+            assert!(shard_for_region(2, rc, key, n) < n);
+            assert!(shard_for_region(2, rc, key, n) >= 10, "last band starts at 10");
+        }
+        // Out-of-range region index clamps to the last band rather than panicking.
+        assert!(shard_for_region(99, rc, "x", n) >= 10);
+    }
+
     /// Golden vectors — these pin the hash. If one of these ever changes, the
     /// mapping changed and every key in every running cluster just moved. Treat
     /// a failure here as "you must not ship this".
