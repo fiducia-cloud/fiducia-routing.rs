@@ -274,7 +274,10 @@ mod tests {
         let n = 64;
         let base = route_shard(KeyScope::Global, "orders/checkout", "gcp", &regions, n);
         for region in ["aws", "hetzner", "azure", "", "garbage"] {
-            assert_eq!(route_shard(KeyScope::Global, "orders/checkout", region, &regions, n), base);
+            assert_eq!(
+                route_shard(KeyScope::Global, "orders/checkout", region, &regions, n),
+                base
+            );
         }
         // ...and it equals the plain region-agnostic hash.
         assert_eq!(base, shard_for("orders/checkout", n));
@@ -298,9 +301,18 @@ mod tests {
         let east = shard_for_customer_region(Region::UsEast1, key, shard_count);
         let europe = shard_for_customer_region(Region::EuCentral, key, shard_count);
 
-        assert_eq!(central, shard_for_customer_region(Region::UsCentral1, key, shard_count));
-        assert_eq!(east, shard_for_customer_region(Region::UsEast1, key, shard_count));
-        assert_eq!(europe, shard_for_customer_region(Region::EuCentral, key, shard_count));
+        assert_eq!(
+            central,
+            shard_for_customer_region(Region::UsCentral1, key, shard_count)
+        );
+        assert_eq!(
+            east,
+            shard_for_customer_region(Region::UsEast1, key, shard_count)
+        );
+        assert_eq!(
+            europe,
+            shard_for_customer_region(Region::EuCentral, key, shard_count)
+        );
 
         assert!((0..85).contains(&central), "us-central1 band");
         assert!((85..170).contains(&east), "us-east-1 band");
@@ -407,5 +419,21 @@ mod tests {
     #[should_panic]
     fn zero_shard_count_panics() {
         let _ = shard_for("x", 0);
+    }
+
+    #[test]
+    fn generated_interfaces_are_importable() {
+        let request = fiducia_interfaces::LockAcquireManyRequest {
+            keys: vec!["orders/42".to_string(), "inventory/sku-7".to_string()],
+            holder: Some("worker-a".to_string()),
+            ttl_ms: Some(30_000),
+            wait: Some(false),
+        };
+
+        assert_eq!(request.keys.len(), 2);
+        assert!(matches!(
+            fiducia_interfaces::ProposeErrorReason::NotLeader,
+            fiducia_interfaces::ProposeErrorReason::NotLeader
+        ));
     }
 }
