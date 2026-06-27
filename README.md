@@ -31,6 +31,21 @@ An unrecognized or empty `X-Fiducia-Region` is **not** an error: resolve it with
 default region. (`shard_for_region` also clamps an out-of-range index to the last
 band, so routing is always valid.)
 
+### Use `route_shard` — don't accidentally region-shard a global key
+
+```rust
+pub enum KeyScope { Global, Regional }
+pub fn route_shard(scope, key, region, regions, shard_count) -> ShardId;
+```
+
+Scope is a property of the **key**, not the region header. `route_shard` enforces
+it: `Global` ignores the region entirely (same shard for every client, so one
+lock worldwide — pair with leader affinity for proximity); `Regional` routes into
+the resolved region's band (region picks the band, key picks the shard within it).
+This makes the failure you'd otherwise hit impossible: a global key can never land
+on a different shard just because one client sent a different (or defaulted)
+region.
+
 ### Global vs. region-scoped keys
 
 `shard_for` is **region-agnostic**: a key maps to one shard worldwide, so it's
