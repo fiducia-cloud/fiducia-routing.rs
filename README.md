@@ -22,9 +22,16 @@ pub fn shard_for(key: &str, shard_count: u32) -> ShardId;  // hash(key) % shard_
 // Region-aware (geo-local) sharding — opt-in:
 pub enum Region { UsCentral1, UsEast1, EuCentral }
 pub fn shard_for_customer_region(region: Region, key: &str, shard_count: u32) -> ShardId;
-pub fn region_index(region: &str, regions: &[&str]) -> Option<u32>;
+pub const DEFAULT_REGION_INDEX: u32;  // 0 = first region in topology order (primary)
+pub fn region_index(region: &str, regions: &[&str]) -> Option<u32>;       // None if unknown
+pub fn region_index_or(region: &str, regions: &[&str], default: u32) -> u32;  // unknown -> default
 pub fn shard_for_region(region_index: u32, region_count: u32, key: &str, shard_count: u32) -> ShardId;
 ```
+
+An unrecognized or empty `X-Fiducia-Region` is **not** an error: resolve it with
+`region_index_or(region, regions, DEFAULT_REGION_INDEX)` so it degrades to the
+default region. (`shard_for_region` also clamps an out-of-range index to the last
+band, so routing is always valid.)
 
 ### Global vs. region-scoped keys
 
