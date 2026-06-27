@@ -59,11 +59,24 @@ pub fn shard_for_region(region_index: u32, region_count: u32, key: &str, shard_c
     base + (fnv1a(key) % size)
 }
 
+/// Conventional default region: index 0 — the first region in `topology.toml`
+/// order (the cluster's primary). Used when a client's region is unrecognized.
+pub const DEFAULT_REGION_INDEX: u32 = 0;
+
 /// Resolve a region name to its index in an ordered region list (the order is
 /// the cluster order in `topology.toml`). Returns `None` for an unknown region.
 #[inline]
 pub fn region_index(region: &str, regions: &[&str]) -> Option<u32> {
     regions.iter().position(|r| *r == region).map(|i| i as u32)
+}
+
+/// Resolve a (possibly client-supplied, possibly unknown or empty) region name to
+/// an index, falling back to `default_index` when it isn't recognized — so a
+/// typo'd or unset `X-Fiducia-Region` degrades to a sensible **default region**
+/// instead of erroring. Pair with [`DEFAULT_REGION_INDEX`] for the primary.
+#[inline]
+pub fn region_index_or(region: &str, regions: &[&str], default_index: u32) -> u32 {
+    region_index(region, regions).unwrap_or(default_index)
 }
 
 /// FNV-1a (32-bit) — small, dependency-free, well-distributed, and identical
@@ -99,6 +112,17 @@ mod tests {
         assert_eq!(region_index("gcp", &regions), Some(0));
         assert_eq!(region_index("hetzner", &regions), Some(2));
         assert_eq!(region_index("azure", &regions), None);
+    }
+
+    #[test]
+    fn unknown_region_falls_back_to_default() {
+        let regions = ["gcp", "aws", "hetzner"];
+        assert_eq!(region_index_or("aws", &regions, DEFAULT_REGION_INDEX), 1); // known wins
+        assert_eq!(region_index_or("azure", &regions, DEFAULT_REGION_INDEX), 0); // unknown -> default
+        assert_eq!(region_index_or("", &regions, 2), 2); // empty -> caller's default
+        // The resolved index is always a valid band for shard_for_region.
+        let n = 12;
+        assert!(shard_for_region(region_index_or("nope", &regions, DEFAULT_REGION_INDEX), 3, "k", n) < n);
     }
 
     #[test]
