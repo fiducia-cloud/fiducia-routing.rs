@@ -33,6 +33,39 @@ pub fn shard_for(key: &str, shard_count: u32) -> ShardId {
     fnv1a(key) % shard_count
 }
 
+/// Region-aware sharding: map `(region, key)` into the band of shards homed in
+/// that region, so the owning shard's leader is geographically close to the
+/// client. The shard space is split into `region_count` contiguous bands; the
+/// last band absorbs any remainder.
+///
+/// **Important — this makes the key REGION-SCOPED.** The same key in two
+/// different regions maps to two *different* shards, so it is NOT globally
+/// coordinated. Use this only for region-local data (low-latency, region-pinned).
+/// For a key that must be globally consistent (one lock worldwide) use
+/// [`shard_for`] (region-agnostic) and rely on *leader affinity* to place that
+/// shard's leader near demand instead.
+///
+/// # Panics
+/// Panics if `region_count == 0` or `shard_count < region_count`.
+#[inline]
+pub fn shard_for_region(region_index: u32, region_count: u32, key: &str, shard_count: u32) -> ShardId {
+    assert!(region_count > 0, "region_count must be > 0");
+    assert!(shard_count >= region_count, "need at least one shard per region");
+    let ri = region_index.min(region_count - 1); // clamp out-of-range to last band
+    let band = shard_count / region_count; // shards per region (floor)
+    let base = ri * band;
+    // The last region owns the remainder shards too.
+    let size = if ri == region_count - 1 { shard_count - base } else { band };
+    base + (fnv1a(key) % size)
+}
+
+/// Resolve a region name to its index in an ordered region list (the order is
+/// the cluster order in `topology.toml`). Returns `None` for an unknown region.
+#[inline]
+pub fn region_index(region: &str, regions: &[&str]) -> Option<u32> {
+    regions.iter().position(|r| *r == region).map(|i| i as u32)
+}
+
 /// FNV-1a (32-bit) — small, dependency-free, well-distributed, and identical
 /// across processes and architectures. **Do not change** the constants or the
 /// byte order; the golden vectors in the tests exist to stop exactly that.
