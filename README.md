@@ -20,6 +20,8 @@ pub fn fnv1a(s: &str) -> u32;                       // the (frozen) hash
 pub fn shard_for(key: &str, shard_count: u32) -> ShardId;  // hash(key) % shard_count
 
 // Region-aware (geo-local) sharding — opt-in:
+pub enum Region { UsCentral1, UsEast1, EuCentral }
+pub fn shard_for_customer_region(region: Region, key: &str, shard_count: u32) -> ShardId;
 pub const DEFAULT_REGION_INDEX: u32;  // 0 = first region in topology order (primary)
 pub fn region_index(region: &str, regions: &[&str]) -> Option<u32>;       // None if unknown
 pub fn region_index_or(region: &str, regions: &[&str], default: u32) -> u32;  // unknown -> default
@@ -58,6 +60,18 @@ it only for region-local data; never for a key that must be globally consistent.
 `shard_count` is **not** defined here — it's cluster configuration owned by the
 brain (`ClusterConfig`) and passed in. It is fixed for the cluster's life, which
 is what keeps `key → shard` stable while the node count scales.
+
+Customers should pass an explicit `Region` value with their key when they want
+region-local routing. Do not route from client IP; IPs can change under a
+customer, while the selected region is stable API input.
+
+## Region helper CLI
+
+```bash
+cargo run --bin fiducia-region -- --list
+cargo run --bin fiducia-region -- --lat 38.8977 --lon -77.0365
+cargo run --bin fiducia-region -- --region us-east-1 --key orders/checkout --shards 256
+```
 
 ## The hash is frozen
 
