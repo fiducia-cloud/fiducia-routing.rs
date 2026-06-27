@@ -33,6 +33,27 @@ pub fn shard_for(key: &str, shard_count: u32) -> ShardId {
     fnv1a(key) % shard_count
 }
 
+/// Reserved routing key under which **all** lock + semaphore state lives.
+///
+/// Multi-key *union* locks must be atomic and conflict-checked across every
+/// member key, which requires one state machine to see them together. So locks
+/// and semaphores are **not** sharded by their own key — every lock/semaphore
+/// operation routes to the single shard that owns this reserved key (the
+/// live-mutex single-broker model, made HA by Raft). It is defined here, in the
+/// shared routing crate, so the node (`Command::routing_key`), the load balancer,
+/// and the brain cannot disagree on which shard coordinates locks.
+///
+/// The leading NUL keeps it from colliding with any real user key.
+pub const LOCK_COORDINATION_KEY: &str = "\u{0}fiducia-lock-coordinator";
+
+/// The shard that coordinates **all** locks/semaphores, for a given shard count.
+/// The LB sends every `/v1/locks/*` and `/v1/semaphores/*` request to this
+/// shard's leader; the node routes every lock/semaphore command here too.
+#[inline]
+pub fn lock_coordination_shard(shard_count: u32) -> ShardId {
+    shard_for(LOCK_COORDINATION_KEY, shard_count)
+}
+
 /// Customer-selectable region values.
 ///
 /// These are the stable API values customers pass with their key. They map onto
