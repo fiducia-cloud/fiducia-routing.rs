@@ -33,6 +33,39 @@ pub fn shard_for(key: &str, shard_count: u32) -> ShardId {
     fnv1a(key) % shard_count
 }
 
+/// Region-aware sharding: map `(region, key)` into the band of shards homed in
+/// that region, so the owning shard's leader is geographically close to the
+/// client. The shard space is split into `region_count` contiguous bands; the
+/// last band absorbs any remainder.
+///
+/// **Important — this makes the key REGION-SCOPED.** The same key in two
+/// different regions maps to two *different* shards, so it is NOT globally
+/// coordinated. Use this only for region-local data (low-latency, region-pinned).
+/// For a key that must be globally consistent (one lock worldwide) use
+/// [`shard_for`] (region-agnostic) and rely on *leader affinity* to place that
+/// shard's leader near demand instead.
+///
+/// # Panics
+/// Panics if `region_count == 0` or `shard_count < region_count`.
+#[inline]
+pub fn shard_for_region(region_index: u32, region_count: u32, key: &str, shard_count: u32) -> ShardId {
+    assert!(region_count > 0, "region_count must be > 0");
+    assert!(shard_count >= region_count, "need at least one shard per region");
+    let ri = region_index.min(region_count - 1); // clamp out-of-range to last band
+    let band = shard_count / region_count; // shards per region (floor)
+    let base = ri * band;
+    // The last region owns the remainder shards too.
+    let size = if ri == region_count - 1 { shard_count - base } else { band };
+    base + (fnv1a(key) % size)
+}
+
+/// Resolve a region name to its index in an ordered region list (the order is
+/// the cluster order in `topology.toml`). Returns `None` for an unknown region.
+#[inline]
+pub fn region_index(region: &str, regions: &[&str]) -> Option<u32> {
+    regions.iter().position(|r| *r == region).map(|i| i as u32)
+}
+
 /// FNV-1a (32-bit) — small, dependency-free, well-distributed, and identical
 /// across processes and architectures. **Do not change** the constants or the
 /// byte order; the golden vectors in the tests exist to stop exactly that.
@@ -58,6 +91,51 @@ mod tests {
                 assert_eq!(shard_for(key, n), shard_for(key, n));
             }
         }
+    }
+
+    #[test]
+    fn region_index_lookup() {
+        let regions = ["gcp", "aws", "hetzner"];
+        assert_eq!(region_index("gcp", &regions), Some(0));
+        assert_eq!(region_index("hetzner", &regions), Some(2));
+        assert_eq!(region_index("azure", &regions), None);
+    }
+
+    #[test]
+    fn region_sharding_lands_in_the_region_band() {
+        // 3 regions, 12 shards -> bands [0,4) [4,8) [8,12).
+        let (rc, n) = (3u32, 12u32);
+        for key in ["orders/checkout", "api", "user-42", "x"] {
+            assert!((0..4).contains(&shard_for_region(0, rc, key, n)), "region 0 band");
+            assert!((4..8).contains(&shard_for_region(1, rc, key, n)), "region 1 band");
+            assert!((8..12).contains(&shard_for_region(2, rc, key, n)), "region 2 band");
+        }
+    }
+
+    #[test]
+    fn same_key_different_region_is_geographically_local() {
+        // The whole point: a client routes to a shard in ITS region (closer
+        // leader). The same key in different regions therefore lands on
+        // different, region-local shards.
+        let (rc, n) = (3u32, 12u32);
+        let g = shard_for_region(0, rc, "orders/checkout", n);
+        let a = shard_for_region(1, rc, "orders/checkout", n);
+        let h = shard_for_region(2, rc, "orders/checkout", n);
+        assert_ne!(g, a);
+        assert_ne!(a, h);
+        assert_ne!(g, h);
+    }
+
+    #[test]
+    fn region_sharding_bounded_and_remainder_in_last_band() {
+        // 3 regions, 16 shards -> bands of 5,5,6 (last absorbs remainder).
+        let (rc, n) = (3u32, 16u32);
+        for key in ["a", "bb", "ccc", "orders", "lock-9"] {
+            assert!(shard_for_region(2, rc, key, n) < n);
+            assert!(shard_for_region(2, rc, key, n) >= 10, "last band starts at 10");
+        }
+        // Out-of-range region index clamps to the last band rather than panicking.
+        assert!(shard_for_region(99, rc, "x", n) >= 10);
     }
 
     /// Golden vectors — these pin the hash. If one of these ever changes, the

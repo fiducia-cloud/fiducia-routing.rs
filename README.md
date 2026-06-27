@@ -18,7 +18,20 @@ the wrong Raft group. Centralizing the hash makes that class of bug impossible.
 pub type ShardId = u32;
 pub fn fnv1a(s: &str) -> u32;                       // the (frozen) hash
 pub fn shard_for(key: &str, shard_count: u32) -> ShardId;  // hash(key) % shard_count
+
+// Region-aware (geo-local) sharding — opt-in:
+pub fn region_index(region: &str, regions: &[&str]) -> Option<u32>;
+pub fn shard_for_region(region_index: u32, region_count: u32, key: &str, shard_count: u32) -> ShardId;
 ```
+
+### Global vs. region-scoped keys
+
+`shard_for` is **region-agnostic**: a key maps to one shard worldwide, so it's
+globally coordinated (one lock everywhere) — put the leader near demand with
+*leader affinity*. `shard_for_region` maps `(region, key)` into the band of
+shards homed in that region for a geographically-close leader, but that makes the
+key **region-scoped** (the same key in two regions is two different shards). Use
+it only for region-local data; never for a key that must be globally consistent.
 
 `shard_count` is **not** defined here — it's cluster configuration owned by the
 brain (`ClusterConfig`) and passed in. It is fixed for the cluster's life, which
