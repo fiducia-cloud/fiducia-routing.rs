@@ -115,6 +115,17 @@ mod tests {
     }
 
     #[test]
+    fn unknown_region_falls_back_to_default() {
+        let regions = ["gcp", "aws", "hetzner"];
+        assert_eq!(region_index_or("aws", &regions, DEFAULT_REGION_INDEX), 1); // known wins
+        assert_eq!(region_index_or("azure", &regions, DEFAULT_REGION_INDEX), 0); // unknown -> default
+        assert_eq!(region_index_or("", &regions, 2), 2); // empty -> caller's default
+        // The resolved index is always a valid band for shard_for_region.
+        let n = 12;
+        assert!(shard_for_region(region_index_or("nope", &regions, DEFAULT_REGION_INDEX), 3, "k", n) < n);
+    }
+
+    #[test]
     fn region_sharding_lands_in_the_region_band() {
         // 3 regions, 12 shards -> bands [0,4) [4,8) [8,12).
         let (rc, n) = (3u32, 12u32);
