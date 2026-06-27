@@ -33,6 +33,93 @@ pub fn shard_for(key: &str, shard_count: u32) -> ShardId {
     fnv1a(key) % shard_count
 }
 
+/// Customer-selectable region values.
+///
+/// These are the stable API values customers pass with their key. They map onto
+/// the current cluster order from `fiducia-infra/topology.toml`; keep the order in
+/// [`Region::ALL`] aligned with the generated edge region list.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Region {
+    UsCentral1,
+    UsEast1,
+    EuCentral,
+}
+
+impl Region {
+    pub const ALL: [Region; 3] = [Region::UsCentral1, Region::UsEast1, Region::EuCentral];
+
+    /// Stable customer-facing API value.
+    pub const fn code(self) -> &'static str {
+        match self {
+            Region::UsCentral1 => "us-central1",
+            Region::UsEast1 => "us-east-1",
+            Region::EuCentral => "eu-central",
+        }
+    }
+
+    /// Current backing cluster name for this customer-facing region.
+    pub const fn cluster_name(self) -> &'static str {
+        match self {
+            Region::UsCentral1 => "gcp",
+            Region::UsEast1 => "aws",
+            Region::EuCentral => "hetzner",
+        }
+    }
+
+    pub const fn index(self) -> u32 {
+        match self {
+            Region::UsCentral1 => 0,
+            Region::UsEast1 => 1,
+            Region::EuCentral => 2,
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        let normalized = value.trim().to_ascii_lowercase();
+        match normalized.as_str() {
+            "us-central1" | "us-central" | "gcp" => Some(Region::UsCentral1),
+            "us-east-1" | "us-east" | "aws" => Some(Region::UsEast1),
+            "eu-central" | "eu-central-1" | "hetzner" => Some(Region::EuCentral),
+            _ => None,
+        }
+    }
+
+    pub fn nearest_to(latitude: f64, longitude: f64) -> Self {
+        let mut best = Region::ALL[0];
+        let mut best_distance = best.distance_km_to(latitude, longitude);
+        for region in Region::ALL.iter().copied().skip(1) {
+            let distance = region.distance_km_to(latitude, longitude);
+            if distance < best_distance {
+                best = region;
+                best_distance = distance;
+            }
+        }
+        best
+    }
+
+    pub fn distance_km_to(self, latitude: f64, longitude: f64) -> f64 {
+        let (region_latitude, region_longitude) = self.approximate_coordinates();
+        haversine_km(latitude, longitude, region_latitude, region_longitude)
+    }
+
+    fn approximate_coordinates(self) -> (f64, f64) {
+        match self {
+            Region::UsCentral1 => (41.2619, -95.8608),
+            Region::UsEast1 => (38.13, -78.45),
+            Region::EuCentral => (50.4761, 12.3700),
+        }
+    }
+}
+
+/// Customer-facing region-aware routing: map `(region, key)` to a shard.
+///
+/// This is intentionally independent of client IP. IPs can change underneath the
+/// customer; the selected region is an explicit API input and therefore stable.
+#[inline]
+pub fn shard_for_customer_region(region: Region, key: &str, shard_count: u32) -> ShardId {
+    shard_for_region(region.index(), Region::ALL.len() as u32, key, shard_count)
+}
+
 /// Region-aware sharding: map `(region, key)` into the band of shards homed in
 /// that region, so the owning shard's leader is geographically close to the
 /// client. The shard space is split into `region_count` contiguous bands; the
@@ -48,14 +135,26 @@ pub fn shard_for(key: &str, shard_count: u32) -> ShardId {
 /// # Panics
 /// Panics if `region_count == 0` or `shard_count < region_count`.
 #[inline]
-pub fn shard_for_region(region_index: u32, region_count: u32, key: &str, shard_count: u32) -> ShardId {
+pub fn shard_for_region(
+    region_index: u32,
+    region_count: u32,
+    key: &str,
+    shard_count: u32,
+) -> ShardId {
     assert!(region_count > 0, "region_count must be > 0");
-    assert!(shard_count >= region_count, "need at least one shard per region");
+    assert!(
+        shard_count >= region_count,
+        "need at least one shard per region"
+    );
     let ri = region_index.min(region_count - 1); // clamp out-of-range to last band
     let band = shard_count / region_count; // shards per region (floor)
     let base = ri * band;
     // The last region owns the remainder shards too.
-    let size = if ri == region_count - 1 { shard_count - base } else { band };
+    let size = if ri == region_count - 1 {
+        shard_count - base
+    } else {
+        band
+    };
     base + (fnv1a(key) % size)
 }
 
@@ -64,6 +163,16 @@ pub fn shard_for_region(region_index: u32, region_count: u32, key: &str, shard_c
 #[inline]
 pub fn region_index(region: &str, regions: &[&str]) -> Option<u32> {
     regions.iter().position(|r| *r == region).map(|i| i as u32)
+}
+
+fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+    let d_lat = (lat2 - lat1).to_radians();
+    let d_lon = (lon2 - lon1).to_radians();
+    let lat1 = lat1.to_radians();
+    let lat2 = lat2.to_radians();
+    let a = (d_lat / 2.0).sin().powi(2) + lat1.cos() * lat2.cos() * (d_lon / 2.0).sin().powi(2);
+    let c = 2.0 * a.min(1.0).sqrt().atan2((1.0 - a).max(0.0).sqrt());
+    6_371.0 * c
 }
 
 /// FNV-1a (32-bit) — small, dependency-free, well-distributed, and identical
@@ -85,7 +194,14 @@ mod tests {
 
     #[test]
     fn deterministic_and_bounded() {
-        for key in ["orders", "checkout", "orders/checkout", "api", "cleanup", ""] {
+        for key in [
+            "orders",
+            "checkout",
+            "orders/checkout",
+            "api",
+            "cleanup",
+            "",
+        ] {
             for n in [1u32, 4, 16, 256, 1024] {
                 assert!(shard_for(key, n) < n);
                 assert_eq!(shard_for(key, n), shard_for(key, n));
@@ -102,13 +218,64 @@ mod tests {
     }
 
     #[test]
+    fn customer_region_and_key_are_the_stable_routing_tuple() {
+        let shard_count = 256;
+        let key = "orders/checkout";
+
+        let central = shard_for_customer_region(Region::UsCentral1, key, shard_count);
+        let east = shard_for_customer_region(Region::UsEast1, key, shard_count);
+        let europe = shard_for_customer_region(Region::EuCentral, key, shard_count);
+
+        assert_eq!(
+            central,
+            shard_for_customer_region(Region::UsCentral1, key, shard_count)
+        );
+        assert_eq!(
+            east,
+            shard_for_customer_region(Region::UsEast1, key, shard_count)
+        );
+        assert_eq!(
+            europe,
+            shard_for_customer_region(Region::EuCentral, key, shard_count)
+        );
+
+        assert!((0..85).contains(&central), "us-central1 band");
+        assert!((85..170).contains(&east), "us-east-1 band");
+        assert!((170..256).contains(&europe), "eu-central band");
+        assert_ne!(central, east);
+        assert_ne!(east, europe);
+        assert_ne!(central, europe);
+    }
+
+    #[test]
+    fn customer_region_values_parse_and_select_nearest_region() {
+        assert_eq!(Region::parse("us-central1"), Some(Region::UsCentral1));
+        assert_eq!(Region::parse("aws"), Some(Region::UsEast1));
+        assert_eq!(Region::parse("hetzner"), Some(Region::EuCentral));
+        assert_eq!(Region::parse("moon"), None);
+
+        assert_eq!(Region::nearest_to(38.8977, -77.0365), Region::UsEast1);
+        assert_eq!(Region::nearest_to(41.25, -95.9), Region::UsCentral1);
+        assert_eq!(Region::nearest_to(50.1, 8.7), Region::EuCentral);
+    }
+
+    #[test]
     fn region_sharding_lands_in_the_region_band() {
         // 3 regions, 12 shards -> bands [0,4) [4,8) [8,12).
         let (rc, n) = (3u32, 12u32);
         for key in ["orders/checkout", "api", "user-42", "x"] {
-            assert!((0..4).contains(&shard_for_region(0, rc, key, n)), "region 0 band");
-            assert!((4..8).contains(&shard_for_region(1, rc, key, n)), "region 1 band");
-            assert!((8..12).contains(&shard_for_region(2, rc, key, n)), "region 2 band");
+            assert!(
+                (0..4).contains(&shard_for_region(0, rc, key, n)),
+                "region 0 band"
+            );
+            assert!(
+                (4..8).contains(&shard_for_region(1, rc, key, n)),
+                "region 1 band"
+            );
+            assert!(
+                (8..12).contains(&shard_for_region(2, rc, key, n)),
+                "region 2 band"
+            );
         }
     }
 
@@ -132,7 +299,10 @@ mod tests {
         let (rc, n) = (3u32, 16u32);
         for key in ["a", "bb", "ccc", "orders", "lock-9"] {
             assert!(shard_for_region(2, rc, key, n) < n);
-            assert!(shard_for_region(2, rc, key, n) >= 10, "last band starts at 10");
+            assert!(
+                shard_for_region(2, rc, key, n) >= 10,
+                "last band starts at 10"
+            );
         }
         // Out-of-range region index clamps to the last band rather than panicking.
         assert!(shard_for_region(99, rc, "x", n) >= 10);

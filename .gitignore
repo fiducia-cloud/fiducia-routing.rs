@@ -2,3 +2,8 @@
 **/*.rs.bk
 *.pdb
 Cargo.lock
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
