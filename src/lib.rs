@@ -151,6 +151,29 @@ mod tests {
     }
 
     #[test]
+    fn global_keys_ignore_region_entirely() {
+        // The footgun guard: a Global key maps to the SAME shard no matter the
+        // region — valid, invalid, or empty — so it can't split into two locks.
+        let regions = ["gcp", "aws", "hetzner"];
+        let n = 64;
+        let base = route_shard(KeyScope::Global, "orders/checkout", "gcp", &regions, n);
+        for region in ["aws", "hetzner", "azure", "", "garbage"] {
+            assert_eq!(route_shard(KeyScope::Global, "orders/checkout", region, &regions, n), base);
+        }
+        // ...and it equals the plain region-agnostic hash.
+        assert_eq!(base, shard_for("orders/checkout", n));
+    }
+
+    #[test]
+    fn regional_keys_route_into_their_region_band() {
+        let regions = ["gcp", "aws", "hetzner"]; // 3 regions
+        let n = 12; // bands [0,4) [4,8) [8,12)
+        assert!((4..8).contains(&route_shard(KeyScope::Regional, "k", "aws", &regions, n)));
+        // unknown region -> default band [0,4)
+        assert!((0..4).contains(&route_shard(KeyScope::Regional, "k", "nope", &regions, n)));
+    }
+
+    #[test]
     fn unknown_region_falls_back_to_default() {
         let regions = ["gcp", "aws", "hetzner"];
         assert_eq!(region_index_or("aws", &regions, DEFAULT_REGION_INDEX), 1); // known wins
