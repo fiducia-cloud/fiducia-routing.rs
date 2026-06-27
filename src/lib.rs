@@ -267,7 +267,6 @@ mod tests {
     }
 
     #[test]
-<<<<<<< HEAD
     fn global_keys_ignore_region_entirely() {
         // The footgun guard: a Global key maps to the SAME shard no matter the
         // region — valid, invalid, or empty — so it can't split into two locks.
@@ -288,7 +287,9 @@ mod tests {
         assert!((4..8).contains(&route_shard(KeyScope::Regional, "k", "aws", &regions, n)));
         // unknown region -> default band [0,4)
         assert!((0..4).contains(&route_shard(KeyScope::Regional, "k", "nope", &regions, n)));
-=======
+    }
+
+    #[test]
     fn customer_region_and_key_are_the_stable_routing_tuple() {
         let shard_count = 256;
         let key = "orders/checkout";
@@ -297,18 +298,9 @@ mod tests {
         let east = shard_for_customer_region(Region::UsEast1, key, shard_count);
         let europe = shard_for_customer_region(Region::EuCentral, key, shard_count);
 
-        assert_eq!(
-            central,
-            shard_for_customer_region(Region::UsCentral1, key, shard_count)
-        );
-        assert_eq!(
-            east,
-            shard_for_customer_region(Region::UsEast1, key, shard_count)
-        );
-        assert_eq!(
-            europe,
-            shard_for_customer_region(Region::EuCentral, key, shard_count)
-        );
+        assert_eq!(central, shard_for_customer_region(Region::UsCentral1, key, shard_count));
+        assert_eq!(east, shard_for_customer_region(Region::UsEast1, key, shard_count));
+        assert_eq!(europe, shard_for_customer_region(Region::EuCentral, key, shard_count));
 
         assert!((0..85).contains(&central), "us-central1 band");
         assert!((85..170).contains(&east), "us-east-1 band");
@@ -328,7 +320,6 @@ mod tests {
         assert_eq!(Region::nearest_to(38.8977, -77.0365), Region::UsEast1);
         assert_eq!(Region::nearest_to(41.25, -95.9), Region::UsCentral1);
         assert_eq!(Region::nearest_to(50.1, 8.7), Region::EuCentral);
->>>>>>> 6c573daa94167b2fbd6d4524301fbeb1bfd6d362
     }
 
     #[test]
