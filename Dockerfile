@@ -11,8 +11,7 @@ COPY . fiducia-routing.rs
 WORKDIR /build/fiducia-routing.rs
 RUN cargo build --release --bin fiducia-region && strip target/release/fiducia-region
 
-FROM debian:bookworm-slim
-RUN useradd --uid 10001 --user-group --home-dir /nonexistent --shell /usr/sbin/nologin fiducia
-COPY --from=build --chown=10001:10001 /build/fiducia-routing.rs/target/release/fiducia-region /usr/local/bin/fiducia-region
-USER 10001:10001
+FROM gcr.io/distroless/cc-debian12:nonroot
+COPY --from=build --chown=65532:65532 /build/fiducia-routing.rs/target/release/fiducia-region /usr/local/bin/fiducia-region
+USER 65532:65532
 ENTRYPOINT ["/usr/local/bin/fiducia-region"]
