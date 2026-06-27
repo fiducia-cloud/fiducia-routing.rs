@@ -280,6 +280,19 @@ mod tests {
     }
 
     #[test]
+    fn lock_coordination_is_stable_and_shared() {
+        // Every lock/semaphore op hashes to ONE coordinator shard, deterministically.
+        for n in [1u32, 4, 16, 256, 1024] {
+            let s = lock_coordination_shard(n);
+            assert!(s < n);
+            assert_eq!(s, shard_for(LOCK_COORDINATION_KEY, n));
+            assert_eq!(s, lock_coordination_shard(n)); // deterministic
+        }
+        // The reserved key cannot be a real user key (leading NUL).
+        assert!(LOCK_COORDINATION_KEY.starts_with('\u{0}'));
+    }
+
+    #[test]
     fn region_index_lookup() {
         let regions = ["gcp", "aws", "hetzner"];
         assert_eq!(region_index("gcp", &regions), Some(0));
