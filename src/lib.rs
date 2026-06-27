@@ -54,6 +54,22 @@ pub fn lock_coordination_shard(shard_count: u32) -> ShardId {
     shard_for(LOCK_COORDINATION_KEY, shard_count)
 }
 
+/// Reserved routing key under which **all** service-discovery state lives.
+///
+/// A list of service names is a global registry operation, not a single-service
+/// lookup. Keeping discovery under one coordinator shard makes
+/// `GET /v1/services` linearizable without a scatter-gather read across every
+/// shard leader. Individual service lookups still return just that service's
+/// live instances, but they route through this same registry shard so the load
+/// balancer and node stay in lockstep.
+pub const SERVICE_DISCOVERY_KEY: &str = "\u{0}fiducia-service-discovery";
+
+/// The shard that coordinates service discovery for a given shard count.
+#[inline]
+pub fn service_discovery_shard(shard_count: u32) -> ShardId {
+    shard_for(SERVICE_DISCOVERY_KEY, shard_count)
+}
+
 /// Customer-selectable region values.
 ///
 /// These are the stable API values customers pass with their key. They map onto
@@ -290,6 +306,18 @@ mod tests {
         }
         // The reserved key cannot be a real user key (leading NUL).
         assert!(LOCK_COORDINATION_KEY.starts_with('\u{0}'));
+    }
+
+    #[test]
+    fn service_discovery_coordination_is_stable_and_shared() {
+        for n in [1u32, 4, 16, 256, 1024] {
+            let s = service_discovery_shard(n);
+            assert!(s < n);
+            assert_eq!(s, shard_for(SERVICE_DISCOVERY_KEY, n));
+            assert_eq!(s, service_discovery_shard(n));
+        }
+        assert!(SERVICE_DISCOVERY_KEY.starts_with('\u{0}'));
+        assert_ne!(SERVICE_DISCOVERY_KEY, LOCK_COORDINATION_KEY);
     }
 
     #[test]
