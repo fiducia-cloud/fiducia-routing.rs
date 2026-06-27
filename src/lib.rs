@@ -79,6 +79,42 @@ pub fn region_index_or(region: &str, regions: &[&str], default_index: u32) -> u3
     region_index(region, regions).unwrap_or(default_index)
 }
 
+/// Whether a key is coordinated globally or scoped to a region. **This is a
+/// property of the key/operation, not of the request's region header.**
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyScope {
+    /// One shard worldwide; region is ignored entirely (correctness). Use leader
+    /// affinity to place that shard's leader near demand.
+    Global,
+    /// Region-local data: routed into the region's shard band for a nearby leader.
+    Regional,
+}
+
+/// The single routing entry point — pick a key's shard, doing the right thing for
+/// its scope so a *global* key can never be accidentally region-sharded:
+///
+/// * [`KeyScope::Global`] → [`shard_for`] — **region is ignored**, so every
+///   client (any region, default or not) converges on the *same* shard.
+/// * [`KeyScope::Regional`] → [`shard_for_region`] using the resolved region
+///   (unknown ⇒ `DEFAULT_REGION_INDEX`); the region picks the band, the key picks
+///   the shard within it.
+#[inline]
+pub fn route_shard(
+    scope: KeyScope,
+    key: &str,
+    region: &str,
+    regions: &[&str],
+    shard_count: u32,
+) -> ShardId {
+    match scope {
+        KeyScope::Global => shard_for(key, shard_count),
+        KeyScope::Regional => {
+            let ri = region_index_or(region, regions, DEFAULT_REGION_INDEX);
+            shard_for_region(ri, regions.len() as u32, key, shard_count)
+        }
+    }
+}
+
 /// FNV-1a (32-bit) — small, dependency-free, well-distributed, and identical
 /// across processes and architectures. **Do not change** the constants or the
 /// byte order; the golden vectors in the tests exist to stop exactly that.
@@ -112,6 +148,29 @@ mod tests {
         assert_eq!(region_index("gcp", &regions), Some(0));
         assert_eq!(region_index("hetzner", &regions), Some(2));
         assert_eq!(region_index("azure", &regions), None);
+    }
+
+    #[test]
+    fn global_keys_ignore_region_entirely() {
+        // The footgun guard: a Global key maps to the SAME shard no matter the
+        // region — valid, invalid, or empty — so it can't split into two locks.
+        let regions = ["gcp", "aws", "hetzner"];
+        let n = 64;
+        let base = route_shard(KeyScope::Global, "orders/checkout", "gcp", &regions, n);
+        for region in ["aws", "hetzner", "azure", "", "garbage"] {
+            assert_eq!(route_shard(KeyScope::Global, "orders/checkout", region, &regions, n), base);
+        }
+        // ...and it equals the plain region-agnostic hash.
+        assert_eq!(base, shard_for("orders/checkout", n));
+    }
+
+    #[test]
+    fn regional_keys_route_into_their_region_band() {
+        let regions = ["gcp", "aws", "hetzner"]; // 3 regions
+        let n = 12; // bands [0,4) [4,8) [8,12)
+        assert!((4..8).contains(&route_shard(KeyScope::Regional, "k", "aws", &regions, n)));
+        // unknown region -> default band [0,4)
+        assert!((0..4).contains(&route_shard(KeyScope::Regional, "k", "nope", &regions, n)));
     }
 
     #[test]
