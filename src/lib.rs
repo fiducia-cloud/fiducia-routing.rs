@@ -397,6 +397,35 @@ mod tests {
     }
 
     #[test]
+    fn customer_region_aliases_are_case_and_space_tolerant() {
+        assert_eq!(Region::parse(" US-CENTRAL "), Some(Region::UsCentral1));
+        assert_eq!(Region::parse("AWS "), Some(Region::UsEast1));
+        assert_eq!(Region::parse(" eu-central-1 "), Some(Region::EuCentral));
+    }
+
+    #[test]
+    fn customer_region_wrapper_matches_explicit_region_band() {
+        let shard_count = 257;
+        for region in Region::ALL {
+            assert_eq!(
+                shard_for_customer_region(region, "sessions/user-42", shard_count),
+                shard_for_region(
+                    region.index(),
+                    Region::ALL.len() as u32,
+                    "sessions/user-42",
+                    shard_count
+                )
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "need at least one shard per region")]
+    fn region_sharding_requires_at_least_one_shard_per_region() {
+        let _ = shard_for_region(0, 3, "too-small", 2);
+    }
+
+    #[test]
     fn unknown_region_falls_back_to_default() {
         let regions = ["gcp", "aws", "hetzner"];
         assert_eq!(region_index_or("aws", &regions, DEFAULT_REGION_INDEX), 1); // known wins
