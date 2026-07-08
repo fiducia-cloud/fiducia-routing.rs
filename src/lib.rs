@@ -54,6 +54,22 @@ pub fn lock_coordination_shard(shard_count: u32) -> ShardId {
     shard_for(LOCK_COORDINATION_KEY, shard_count)
 }
 
+/// Reserved routing key under which **all** service-discovery state lives.
+///
+/// A list of service names is a global registry operation, not a single-service
+/// lookup. Keeping discovery under one coordinator shard makes
+/// `GET /v1/services` linearizable without a scatter-gather read across every
+/// shard leader. Individual service lookups still return just that service's
+/// live instances, but they route through this same registry shard so the load
+/// balancer and node stay in lockstep.
+pub const SERVICE_DISCOVERY_KEY: &str = "\u{0}fiducia-service-discovery";
+
+/// The shard that coordinates service discovery for a given shard count.
+#[inline]
+pub fn service_discovery_shard(shard_count: u32) -> ShardId {
+    shard_for(SERVICE_DISCOVERY_KEY, shard_count)
+}
+
 /// Customer-selectable region values.
 ///
 /// These are the stable API values customers pass with their key. They map onto
@@ -293,6 +309,18 @@ mod tests {
     }
 
     #[test]
+    fn service_discovery_coordination_is_stable_and_shared() {
+        for n in [1u32, 4, 16, 256, 1024] {
+            let s = service_discovery_shard(n);
+            assert!(s < n);
+            assert_eq!(s, shard_for(SERVICE_DISCOVERY_KEY, n));
+            assert_eq!(s, service_discovery_shard(n));
+        }
+        assert!(SERVICE_DISCOVERY_KEY.starts_with('\u{0}'));
+        assert_ne!(SERVICE_DISCOVERY_KEY, LOCK_COORDINATION_KEY);
+    }
+
+    #[test]
     fn region_index_lookup() {
         let regions = ["gcp", "aws", "hetzner"];
         assert_eq!(region_index("gcp", &regions), Some(0));
@@ -308,7 +336,10 @@ mod tests {
         let n = 64;
         let base = route_shard(KeyScope::Global, "orders/checkout", "gcp", &regions, n);
         for region in ["aws", "hetzner", "azure", "", "garbage"] {
-            assert_eq!(route_shard(KeyScope::Global, "orders/checkout", region, &regions, n), base);
+            assert_eq!(
+                route_shard(KeyScope::Global, "orders/checkout", region, &regions, n),
+                base
+            );
         }
         // ...and it equals the plain region-agnostic hash.
         assert_eq!(base, shard_for("orders/checkout", n));
@@ -332,9 +363,18 @@ mod tests {
         let east = shard_for_customer_region(Region::UsEast1, key, shard_count);
         let europe = shard_for_customer_region(Region::EuCentral, key, shard_count);
 
-        assert_eq!(central, shard_for_customer_region(Region::UsCentral1, key, shard_count));
-        assert_eq!(east, shard_for_customer_region(Region::UsEast1, key, shard_count));
-        assert_eq!(europe, shard_for_customer_region(Region::EuCentral, key, shard_count));
+        assert_eq!(
+            central,
+            shard_for_customer_region(Region::UsCentral1, key, shard_count)
+        );
+        assert_eq!(
+            east,
+            shard_for_customer_region(Region::UsEast1, key, shard_count)
+        );
+        assert_eq!(
+            europe,
+            shard_for_customer_region(Region::EuCentral, key, shard_count)
+        );
 
         assert!((0..85).contains(&central), "us-central1 band");
         assert!((85..170).contains(&east), "us-east-1 band");
@@ -354,6 +394,35 @@ mod tests {
         assert_eq!(Region::nearest_to(38.8977, -77.0365), Region::UsEast1);
         assert_eq!(Region::nearest_to(41.25, -95.9), Region::UsCentral1);
         assert_eq!(Region::nearest_to(50.1, 8.7), Region::EuCentral);
+    }
+
+    #[test]
+    fn customer_region_aliases_are_case_and_space_tolerant() {
+        assert_eq!(Region::parse(" US-CENTRAL "), Some(Region::UsCentral1));
+        assert_eq!(Region::parse("AWS "), Some(Region::UsEast1));
+        assert_eq!(Region::parse(" eu-central-1 "), Some(Region::EuCentral));
+    }
+
+    #[test]
+    fn customer_region_wrapper_matches_explicit_region_band() {
+        let shard_count = 257;
+        for region in Region::ALL {
+            assert_eq!(
+                shard_for_customer_region(region, "sessions/user-42", shard_count),
+                shard_for_region(
+                    region.index(),
+                    Region::ALL.len() as u32,
+                    "sessions/user-42",
+                    shard_count
+                )
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "need at least one shard per region")]
+    fn region_sharding_requires_at_least_one_shard_per_region() {
+        let _ = shard_for_region(0, 3, "too-small", 2);
     }
 
     #[test]
@@ -441,5 +510,21 @@ mod tests {
     #[should_panic]
     fn zero_shard_count_panics() {
         let _ = shard_for("x", 0);
+    }
+
+    #[test]
+    fn generated_interfaces_are_importable() {
+        let request = fiducia_interfaces::LockAcquireManyRequest {
+            keys: vec!["orders/42".to_string(), "inventory/sku-7".to_string()],
+            holder: Some("worker-a".to_string()),
+            ttl_ms: Some(30_000),
+            wait: Some(false),
+        };
+
+        assert_eq!(request.keys.len(), 2);
+        assert!(matches!(
+            fiducia_interfaces::ProposeErrorReason::NotLeader,
+            fiducia_interfaces::ProposeErrorReason::NotLeader
+        ));
     }
 }

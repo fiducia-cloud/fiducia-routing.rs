@@ -4,6 +4,5 @@ version = "0.1.0"
 edition = "2021"
 description = "Shared key→shard routing for fiducia.cloud — the single source of truth for the hash + shard_for, so every component agrees where a key lives."
 
-# Intentionally zero-dependency: every fiducia component depends on this, so it
-# must be cheap and stable to pull in.
 [dependencies]
+fiducia-interfaces = { path = "../fiducia-interfaces/generated/rust" }
