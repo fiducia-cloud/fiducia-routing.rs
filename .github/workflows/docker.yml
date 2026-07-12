@@ -1,3 +1,5 @@
+# Builds and pushes the fiducia-region container image to ghcr.io (latest + commit
+# SHA tags) on every push to main.
 name: docker
 on:
   push:
