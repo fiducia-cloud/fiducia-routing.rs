@@ -73,6 +73,15 @@ cargo run --bin fiducia-region -- --lat 38.8977 --lon -77.0365
 cargo run --bin fiducia-region -- --region us-east-1 --key orders/checkout --shards 256
 ```
 
+The CLI uses the pinned `ORESoftware/flags-2-env` parser and reads the resulting
+`FIDUCIA_*` environment map:
+
+```bash
+git submodule update --init --recursive
+make -C vendor/flags-2-env all
+scripts/with-flags2env.sh --region=us-east-1 --key=orders/checkout --shards=256 -- cargo run --bin fiducia-region
+```
+
 ## The hash is frozen
 
 `fnv1a` is FNV-1a (32-bit). **Changing it remaps every key in every running
