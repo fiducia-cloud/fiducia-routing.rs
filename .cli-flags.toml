@@ -1,0 +1,43 @@
+[help]
+url = "https://github.com/fiducia-cloud/fiducia-routing.rs"
+columns = ["options", "env", "type", "description"]
+
+[parse]
+allow_unknown = false
+
+[flags.list]
+env = "FIDUCIA_REGION_LIST"
+aliases = ["list"]
+type = "bool"
+help = "List configured regions."
+
+[flags.lat]
+env = "FIDUCIA_LATITUDE"
+aliases = ["lat"]
+type = "string"
+help = "Customer latitude."
+
+[flags.lon]
+env = "FIDUCIA_LONGITUDE"
+aliases = ["lon"]
+type = "string"
+help = "Customer longitude."
+
+[flags.key]
+env = "FIDUCIA_ROUTING_KEY"
+aliases = ["key"]
+type = "string"
+help = "Routing key."
+
+[flags.region]
+env = "FIDUCIA_REGION"
+aliases = ["region"]
+type = "string"
+help = "Explicit region code."
+
+[flags.shards]
+env = "FIDUCIA_SHARD_COUNT"
+aliases = ["shards"]
+type = "integer"
+help = "Shard count."
+

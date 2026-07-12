@@ -1,15 +1,28 @@
+// fiducia-region: CLI wrapper over the routing crate. Resolves a customer region
+// (explicit --region, or nearest to --lat/--lon) and prints the shard a key maps
+// to, so operators can inspect/debug region-aware routing from the shell.
 use std::env;
 
 use fiducia_routing::{shard_for_customer_region, Region};
 
 fn main() -> Result<(), String> {
     let mut args = env::args().skip(1);
-    let mut latitude = None;
-    let mut longitude = None;
-    let mut key = None;
-    let mut region = None;
-    let mut shard_count = 256u32;
-    let mut list = false;
+    let mut latitude = env_f64("FIDUCIA_LATITUDE")?;
+    let mut longitude = env_f64("FIDUCIA_LONGITUDE")?;
+    let mut key = env::var("FIDUCIA_ROUTING_KEY").ok();
+    let mut region = env::var("FIDUCIA_REGION")
+        .ok()
+        .map(|value| {
+            Region::parse(&value).ok_or_else(|| format!("unknown region '{value}'; run --list"))
+        })
+        .transpose()?;
+    let mut shard_count = env::var("FIDUCIA_SHARD_COUNT")
+        .ok()
+        .map(|value| parse_u32("FIDUCIA_SHARD_COUNT", Some(value)))
+        .transpose()?
+        .unwrap_or(256);
+    let mut list = env::var("FIDUCIA_REGION_LIST")
+        .is_ok_and(|value| matches!(value.as_str(), "1" | "true" | "yes" | "on"));
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -81,6 +94,13 @@ fn parse_f64(name: &str, value: Option<String>) -> Result<f64, String> {
         .ok_or_else(|| format!("{name} needs a value"))?
         .parse()
         .map_err(|_| format!("{name} must be a number"))
+}
+
+fn env_f64(name: &str) -> Result<Option<f64>, String> {
+    env::var(name)
+        .ok()
+        .map(|value| parse_f64(name, Some(value)))
+        .transpose()
 }
 
 fn parse_u32(name: &str, value: Option<String>) -> Result<u32, String> {
