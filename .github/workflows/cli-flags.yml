@@ -1,3 +1,5 @@
+# Audits the .cli-flags.toml schema with the pinned flags2env submodule whenever
+# the CLI flag config, scripts, or submodule change.
 name: CLI flags
 
 on:
