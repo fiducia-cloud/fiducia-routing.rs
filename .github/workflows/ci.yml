@@ -1,3 +1,5 @@
+# Main CI: fmt, clippy, test, and cargo-audit. Checks out fiducia-interfaces
+# alongside the repo so the path dependency resolves.
 name: ci
 
 on:

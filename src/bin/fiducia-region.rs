@@ -1,3 +1,6 @@
+// fiducia-region: CLI wrapper over the routing crate. Resolves a customer region
+// (explicit --region, or nearest to --lat/--lon) and prints the shard a key maps
+// to, so operators can inspect/debug region-aware routing from the shell.
 use std::env;
 
 use fiducia_routing::{shard_for_customer_region, Region};

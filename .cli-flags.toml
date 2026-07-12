@@ -1,3 +1,6 @@
+# flags-2-env flag schema for the fiducia-region CLI: maps command-line flags to
+# the FIDUCIA_* env vars the binary reads. Consumed by scripts/with-flags2env.sh
+# and audited in CI (cli-flags.yml).
 [help]
 url = "https://github.com/fiducia-cloud/fiducia-routing.rs"
 columns = ["options", "env", "type", "description"]

@@ -1,3 +1,5 @@
+# Nix flake defining the Fiducia dev shell (Rust toolchain + supporting tooling),
+# used via direnv (.envrc) and the ./shell helper.
 {
   description = "Fiducia development environment";
 

@@ -1,3 +1,6 @@
+# Cargo manifest for the fiducia-routing crate (library + fiducia-region binary).
+# Depends on fiducia-interfaces via a local path; CI/in-pod builds swap this for a
+# git dep (see README).
 [package]
 name = "fiducia-routing"
 version = "0.1.0"

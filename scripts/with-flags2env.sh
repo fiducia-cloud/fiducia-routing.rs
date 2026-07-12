@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Run a command with FIDUCIA_* env vars derived from CLI flags: feeds the flags
+# through the pinned flags2env parser (.cli-flags.toml schema) then execs the
+# command. Used to invoke the fiducia-region binary.
 set -euo pipefail
 
 root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
