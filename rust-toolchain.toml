@@ -1,3 +1,5 @@
+# Pins the Rust toolchain (stable + rustfmt/clippy) so local, CI, and Docker
+# builds all use the same compiler.
 [toolchain]
 channel = "stable"
 components = ["rustfmt", "clippy"]
