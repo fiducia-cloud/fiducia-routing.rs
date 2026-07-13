@@ -527,4 +527,158 @@ mod tests {
             fiducia_interfaces::ProposeErrorReason::NotLeader
         ));
     }
+
+    /// The published FNV-1a 32-bit reference vectors (Noll's test suite). These
+    /// are the cross-language anchor: any other implementation of the routing
+    /// hash (e.g. fiducia-e2e's JS conformance copy) must reproduce exactly
+    /// these, or it is not hashing what the cluster hashes.
+    #[test]
+    fn fnv1a_matches_published_reference_vectors() {
+        assert_eq!(fnv1a(""), 0x811c_9dc5);
+        assert_eq!(fnv1a("a"), 0xe40c_292c);
+        assert_eq!(fnv1a("b"), 0xe70c_2de5);
+        assert_eq!(fnv1a("foobar"), 0xbf9c_f968);
+        assert_eq!(fnv1a("hello"), 0x4f9f_2cab);
+        assert_eq!(fnv1a("orders/checkout"), 0xd217_6c9d);
+    }
+
+    /// Pin the coordinator shards at the shard counts real deployments run
+    /// (node default 16; the golden-vector cluster 8; the region default 256).
+    /// If one of these moves — a changed reserved key string or hash — every
+    /// running cluster's lock/discovery state is suddenly on the "wrong" shard.
+    #[test]
+    fn coordination_shards_are_pinned_at_deployed_shard_counts() {
+        assert_eq!(lock_coordination_shard(16), 15);
+        assert_eq!(lock_coordination_shard(8), 7);
+        assert_eq!(lock_coordination_shard(256), 223);
+        assert_eq!(service_discovery_shard(16), 9);
+        assert_eq!(service_discovery_shard(8), 1);
+        assert_eq!(service_discovery_shard(256), 233);
+    }
+
+    /// Region bands must tile the shard space exactly: contiguous, disjoint,
+    /// covering [0, shard_count), with the last band absorbing the remainder —
+    /// for ANY (region_count, shard_count), not just the 3-region examples.
+    #[test]
+    fn region_bands_partition_the_shard_space() {
+        for rc in [1u32, 2, 3, 5, 7] {
+            for n in [rc, rc + 1, rc * 2 + 1, 64, 257] {
+                let band = n / rc;
+                let mut covered = 0u32;
+                for ri in 0..rc {
+                    let base = ri * band;
+                    let size = if ri == rc - 1 { n - base } else { band };
+                    assert_eq!(base, covered, "bands must be contiguous (rc={rc}, n={n})");
+                    covered += size;
+                    // Sampled keys stay inside their region's band.
+                    for key in ["orders/checkout", "a", "user-42", "🔒", "\u{0}x"] {
+                        let shard = shard_for_region(ri, rc, key, n);
+                        assert!(
+                            (base..base + size).contains(&shard),
+                            "key {key:?} escaped band {ri} (rc={rc}, n={n}): {shard}"
+                        );
+                    }
+                }
+                assert_eq!(covered, n, "bands must cover every shard (rc={rc}, n={n})");
+            }
+        }
+    }
+
+    /// Every shard must be reachable and the hash roughly uniform — a keyspace
+    /// that starves a shard (or floods one) means hot leaders and wasted Raft
+    /// groups. Loose bounds: this is a smoke alarm, not a chi-squared test.
+    #[test]
+    fn keys_spread_across_every_shard_roughly_uniformly() {
+        let n = 16u32;
+        let keys = 20_000u32;
+        let mut counts = vec![0u32; n as usize];
+        for i in 0..keys {
+            counts[shard_for(&format!("tenant-{}/key-{i}", i % 97), n) as usize] += 1;
+        }
+        let expected = keys / n; // 1250
+        for (shard, &count) in counts.iter().enumerate() {
+            assert!(
+                count > expected / 2 && count < expected * 2,
+                "shard {shard} got {count} of {keys} keys (expected ≈{expected})"
+            );
+        }
+    }
+
+    /// Unicode, embedded NUL, and very long keys hash deterministically and in
+    /// bounds — routing sees raw bytes, whatever the customer sends.
+    #[test]
+    fn unusual_keys_route_deterministically_and_in_bounds() {
+        let long_key = "k".repeat(64 * 1024);
+        for key in ["🔒/orders/结账", "a\u{0}b", "\u{0}", long_key.as_str()] {
+            for n in [1u32, 16, 257] {
+                let s = shard_for(key, n);
+                assert!(s < n);
+                assert_eq!(s, shard_for(key, n));
+            }
+        }
+    }
+
+    /// The customer-facing region values round-trip through `parse`, stay
+    /// aligned with `index()`/`ALL` order, and the cluster order is pinned to
+    /// `fiducia-infra/topology.toml` (gcp, aws, hetzner). Reordering `ALL`
+    /// silently remaps every regional key — that must fail a test, not a
+    /// customer.
+    #[test]
+    fn region_codes_round_trip_and_cluster_order_is_pinned() {
+        let mut seen = std::collections::HashSet::new();
+        for (position, region) in Region::ALL.iter().copied().enumerate() {
+            assert_eq!(Region::parse(region.code()), Some(region));
+            assert_eq!(Region::parse(region.cluster_name()), Some(region));
+            assert_eq!(region.index() as usize, position);
+            assert!(seen.insert(region.code()), "codes must be unique");
+        }
+        let clusters: Vec<&str> = Region::ALL.iter().map(|r| r.cluster_name()).collect();
+        assert_eq!(clusters, ["gcp", "aws", "hetzner"], "topology.toml order");
+    }
+
+    /// The two regional entry points agree: the customer wrapper (typed Region)
+    /// and the generic `route_shard` (region string + cluster list) must land on
+    /// the same shard when the list is in topology order, or the LB and an
+    /// operator tool could disagree about where a regional key lives.
+    #[test]
+    fn customer_wrapper_agrees_with_route_shard_over_cluster_list() {
+        let regions = ["gcp", "aws", "hetzner"];
+        for n in [3u32, 12, 64, 257] {
+            for key in ["orders/checkout", "sessions/user-42", "x"] {
+                for region in Region::ALL {
+                    assert_eq!(
+                        shard_for_customer_region(region, key, n),
+                        route_shard(KeyScope::Regional, key, region.cluster_name(), &regions, n),
+                        "wrapper vs route_shard drift (region={}, key={key}, n={n})",
+                        region.code()
+                    );
+                }
+            }
+        }
+    }
+
+    /// `nearest_to` returns the region that actually minimizes the haversine
+    /// distance (guards the selection loop), and is deterministic.
+    #[test]
+    fn nearest_region_minimizes_distance() {
+        for (lat, lon) in [
+            (38.8977, -77.0365), // Washington, DC
+            (41.25, -95.9),      // Omaha
+            (50.1, 8.7),         // Frankfurt
+            (35.68, 139.69),     // Tokyo (far from everything)
+            (-33.87, 151.21),    // Sydney
+            (0.0, 0.0),          // gulf of Guinea
+        ] {
+            let picked = Region::nearest_to(lat, lon);
+            for other in Region::ALL {
+                assert!(
+                    picked.distance_km_to(lat, lon) <= other.distance_km_to(lat, lon),
+                    "nearest_to({lat},{lon}) picked {} but {} is closer",
+                    picked.code(),
+                    other.code()
+                );
+            }
+            assert_eq!(picked, Region::nearest_to(lat, lon));
+        }
+    }
 }
