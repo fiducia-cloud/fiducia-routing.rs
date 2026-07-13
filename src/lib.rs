@@ -54,6 +54,34 @@ pub fn lock_coordination_shard(shard_count: u32) -> ShardId {
     shard_for(LOCK_COORDINATION_KEY, shard_count)
 }
 
+/// Delimiter framing an org id inside an org-scoped key. `\u{1}` cannot appear
+/// in a valid org id (the node rejects control characters), so a crafted caller
+/// key can never escape its org's keyspace.
+pub const ORG_SCOPE_DELIM: char = '\u{1}';
+
+/// Namespace a caller-supplied key into an org's private keyspace:
+/// `\u{1}{org}\u{1}{key}`.
+///
+/// This is part of the **routing contract**, not just node-internal storage:
+/// the node commits an org's command under the scoped key, so the scoped key is
+/// what gets hashed to a shard. Every component that predicts a shard for an
+/// org-addressed request (the load balancer picking a leader, an operator tool
+/// resolving a key) must hash `org_scoped_key(org, key)` — hashing the raw
+/// caller key computes a different, wrong shard. Defined here so the node and
+/// the LB physically cannot disagree on the format.
+#[inline]
+pub fn org_scoped_key(org_id: &str, key: &str) -> String {
+    format!("{ORG_SCOPE_DELIM}{org_id}{ORG_SCOPE_DELIM}{key}")
+}
+
+/// The prefix every key in `org_id`'s keyspace carries — `org_scoped_key` of
+/// the empty key. Strip it to recover the caller-facing key; a scoped key that
+/// doesn't start with it belongs to a different org (the isolation filter).
+#[inline]
+pub fn org_scope_prefix(org_id: &str) -> String {
+    org_scoped_key(org_id, "")
+}
+
 /// Reserved routing key under which **all** service-discovery state lives.
 ///
 /// A list of service names is a global registry operation, not a single-service
