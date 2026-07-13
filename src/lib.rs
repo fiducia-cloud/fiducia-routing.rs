@@ -9,10 +9,14 @@
 //! [`fiducia-load-balance`](https://github.com/fiducia-cloud/fiducia-load-balance.rs)
 //! all depend on it instead of carrying their own copy.
 //!
-//! Two things only:
+//! The core contract:
 //!   * [`fnv1a`] — the hash. **Frozen.** Changing it remaps every key in the
 //!     cluster (a full data migration), so the golden tests below pin its output.
 //!   * [`shard_for`] — `hash(key) % shard_count`.
+//!   * [`org_scoped_key`] — the per-org namespacing (`\x01{org}\x01{key}`) the
+//!     node applies before a key reaches the state machine. **Also frozen**
+//!     (it's what stored keys look like), and part of routing because the
+//!     scoped key is what gets hashed: the LB must scope before it shards.
 //!
 //! `shard_count` is *not* defined here — it's cluster configuration owned by the
 //! brain ([`fiducia-brain`]'s `ClusterConfig`), passed in by the caller. It is
@@ -690,7 +694,10 @@ mod tests {
     /// the format remaps (and orphans) every org's data.
     #[test]
     fn org_scoped_key_format_is_pinned() {
-        assert_eq!(org_scoped_key("org_1", "orders/checkout"), "\u{1}org_1\u{1}orders/checkout");
+        assert_eq!(
+            org_scoped_key("org_1", "orders/checkout"),
+            "\u{1}org_1\u{1}orders/checkout"
+        );
         assert_eq!(org_scope_prefix("org_1"), "\u{1}org_1\u{1}");
         assert!(org_scoped_key("org_1", "k").starts_with(&org_scope_prefix("org_1")));
     }
