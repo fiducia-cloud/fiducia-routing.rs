@@ -23,6 +23,8 @@ jobs:
         with:
           context: .
           push: true
+          build-args: |
+            INTERFACES_REF=bbd8b52ce729ec34b0a9bff4dda6d0a448181797
           tags: |
             ghcr.io/fiducia-cloud/fiducia-routing:latest
             ghcr.io/fiducia-cloud/fiducia-routing:${{ github.sha }}
