@@ -119,7 +119,7 @@ consumer — never an accidental drift.
 
 `Cargo.lock` is committed, and CI plus the container build use Cargo's
 `--locked` mode. The sibling `fiducia-interfaces` checkout is pinned to the full
-commit `5f2c5279ee19941024455b2843256872485bac82`. The Dockerfile fetches that
+commit `487e470c45ab5851e8f6f3b1dc048fe067fbf408`. The Dockerfile fetches that
 object directly, verifies both `FETCH_HEAD` and the detached `HEAD`, and rejects
 a branch, tag, short hash, or any fetched object that does not equal the declared
 40-character commit. Update the Docker argument, Docker workflow build argument,
