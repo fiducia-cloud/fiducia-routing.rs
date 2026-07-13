@@ -68,9 +68,9 @@ customer, while the selected region is stable API input.
 ## Region helper CLI
 
 ```bash
-cargo run --bin fiducia-region -- --list
-cargo run --bin fiducia-region -- --lat 38.8977 --lon -77.0365
-cargo run --bin fiducia-region -- --region us-east-1 --key orders/checkout --shards 256
+cargo run --locked --bin fiducia-region -- --list
+cargo run --locked --bin fiducia-region -- --lat 38.8977 --lon -77.0365
+cargo run --locked --bin fiducia-region -- --region us-east-1 --key orders/checkout --shards 256
 ```
 
 The CLI uses the pinned `ORESoftware/flags-2-env` parser and reads the resulting
@@ -79,7 +79,7 @@ The CLI uses the pinned `ORESoftware/flags-2-env` parser and reads the resulting
 ```bash
 git submodule update --init --recursive
 make -C vendor/flags-2-env all
-scripts/with-flags2env.sh --region=us-east-1 --key=orders/checkout --shards=256 -- cargo run --bin fiducia-region
+scripts/with-flags2env.sh --region=us-east-1 --key=orders/checkout --shards=256 -- cargo run --locked --bin fiducia-region
 ```
 
 ## The hash is frozen
@@ -115,8 +115,18 @@ fiducia-routing = { git = "https://github.com/fiducia-cloud/fiducia-routing.rs",
 Pin a tag so a routing change is a deliberate, reviewed version bump across every
 consumer — never an accidental drift.
 
+## Reproducible build inputs
+
+`Cargo.lock` is committed, and CI plus the container build use Cargo's
+`--locked` mode. The sibling `fiducia-interfaces` checkout is pinned to the full
+commit `487e470c45ab5851e8f6f3b1dc048fe067fbf408`. The Dockerfile fetches that
+object directly, verifies both `FETCH_HEAD` and the detached `HEAD`, and rejects
+a branch, tag, short hash, or any fetched object that does not equal the declared
+40-character commit. Update the Docker argument, Docker workflow build argument,
+and CI checkout together only after reviewing the generated interface delta.
+
 ## Test
 
 ```bash
-cargo test   # determinism, bounds, and the golden vectors that freeze the hash
+cargo test --locked   # determinism, bounds, and the golden vectors that freeze the hash
 ```

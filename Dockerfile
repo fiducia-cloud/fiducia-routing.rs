@@ -1,17 +1,21 @@
 # syntax=docker/dockerfile:1
 # Build the fiducia-region CLI from the shared routing crate.
-FROM rust:1-slim-bookworm AS build
+FROM rust:1.97.0-slim-bookworm@sha256:cfbb0e0ef7a73e736386bfa346f1cb0503c6d162969dc9426fb37834f3f64c25 AS build
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates
 WORKDIR /build
-ARG INTERFACES_REF=main
-RUN git clone --depth 1 --branch "$INTERFACES_REF" \
-    https://github.com/fiducia-cloud/fiducia-interfaces.git fiducia-interfaces
+ARG INTERFACES_REF=487e470c45ab5851e8f6f3b1dc048fe067fbf408
+RUN git init fiducia-interfaces \
+    && git -C fiducia-interfaces remote add origin https://github.com/fiducia-cloud/fiducia-interfaces.git \
+    && git -C fiducia-interfaces fetch --depth 1 origin "$INTERFACES_REF" \
+    && test "$(git -C fiducia-interfaces rev-parse FETCH_HEAD)" = "$INTERFACES_REF" \
+    && git -C fiducia-interfaces checkout --detach FETCH_HEAD \
+    && test "$(git -C fiducia-interfaces rev-parse HEAD)" = "$INTERFACES_REF"
 COPY . fiducia-routing.rs
 WORKDIR /build/fiducia-routing.rs
-RUN cargo build --release --bin fiducia-region && strip target/release/fiducia-region
+RUN cargo build --locked --release --bin fiducia-region && strip target/release/fiducia-region
 
-FROM gcr.io/distroless/cc-debian12:nonroot
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:ce0d66bc0f64aae46e6a03add867b07f42cc7b8799c949c2e898057b7f75a151
 COPY --from=build --chown=65532:65532 /build/fiducia-routing.rs/target/release/fiducia-region /usr/local/bin/fiducia-region
 USER 65532:65532
 ENTRYPOINT ["/usr/local/bin/fiducia-region"]
