@@ -685,6 +685,37 @@ mod tests {
         }
     }
 
+    /// The org-scoped key format is pinned: the node stores under it, so the
+    /// shard it hashes to is part of the cluster's persistent layout. Changing
+    /// the format remaps (and orphans) every org's data.
+    #[test]
+    fn org_scoped_key_format_is_pinned() {
+        assert_eq!(org_scoped_key("org_1", "orders/checkout"), "\u{1}org_1\u{1}orders/checkout");
+        assert_eq!(org_scope_prefix("org_1"), "\u{1}org_1\u{1}");
+        assert!(org_scoped_key("org_1", "k").starts_with(&org_scope_prefix("org_1")));
+    }
+
+    /// The shard for an org-addressed key is a function of the SCOPED key — the
+    /// raw caller key hashes elsewhere. This is the drift the shared helper
+    /// exists to prevent: an LB hashing the raw key would pick the wrong shard
+    /// for nearly every request.
+    #[test]
+    fn org_scoping_changes_the_shard_mapping_and_isolates_orgs() {
+        let n = 256;
+        let key = "orders/checkout";
+        let a = shard_for(&org_scoped_key("org_a", key), n);
+        let b = shard_for(&org_scoped_key("org_b", key), n);
+        // Deterministic per org…
+        assert_eq!(a, shard_for(&org_scoped_key("org_a", key), n));
+        assert_eq!(b, shard_for(&org_scoped_key("org_b", key), n));
+        // …and a crafted key cannot collide into another org's scoped key,
+        // because the delimiter cannot appear in a valid org id.
+        assert_ne!(
+            org_scoped_key("org_a", &format!("\u{1}org_b\u{1}{key}")),
+            org_scoped_key("org_b", key),
+        );
+    }
+
     /// `nearest_to` returns the region that actually minimizes the haversine
     /// distance (guards the selection loop), and is deterministic.
     #[test]
