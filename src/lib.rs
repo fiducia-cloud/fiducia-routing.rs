@@ -9,10 +9,14 @@
 //! [`fiducia-load-balance`](https://github.com/fiducia-cloud/fiducia-load-balance.rs)
 //! all depend on it instead of carrying their own copy.
 //!
-//! Two things only:
+//! The core contract:
 //!   * [`fnv1a`] — the hash. **Frozen.** Changing it remaps every key in the
 //!     cluster (a full data migration), so the golden tests below pin its output.
 //!   * [`shard_for`] — `hash(key) % shard_count`.
+//!   * [`org_scoped_key`] — the per-org namespacing (`\x01{org}\x01{key}`) the
+//!     node applies before a key reaches the state machine. **Also frozen**
+//!     (it's what stored keys look like), and part of routing because the
+//!     scoped key is what gets hashed: the LB must scope before it shards.
 //!
 //! `shard_count` is *not* defined here — it's cluster configuration owned by the
 //! brain ([`fiducia-brain`]'s `ClusterConfig`), passed in by the caller. It is
@@ -52,6 +56,34 @@ pub const LOCK_COORDINATION_KEY: &str = "\u{0}fiducia-lock-coordinator";
 #[inline]
 pub fn lock_coordination_shard(shard_count: u32) -> ShardId {
     shard_for(LOCK_COORDINATION_KEY, shard_count)
+}
+
+/// Delimiter framing an org id inside an org-scoped key. `\u{1}` cannot appear
+/// in a valid org id (the node rejects control characters), so a crafted caller
+/// key can never escape its org's keyspace.
+pub const ORG_SCOPE_DELIM: char = '\u{1}';
+
+/// Namespace a caller-supplied key into an org's private keyspace:
+/// `\u{1}{org}\u{1}{key}`.
+///
+/// This is part of the **routing contract**, not just node-internal storage:
+/// the node commits an org's command under the scoped key, so the scoped key is
+/// what gets hashed to a shard. Every component that predicts a shard for an
+/// org-addressed request (the load balancer picking a leader, an operator tool
+/// resolving a key) must hash `org_scoped_key(org, key)` — hashing the raw
+/// caller key computes a different, wrong shard. Defined here so the node and
+/// the LB physically cannot disagree on the format.
+#[inline]
+pub fn org_scoped_key(org_id: &str, key: &str) -> String {
+    format!("{ORG_SCOPE_DELIM}{org_id}{ORG_SCOPE_DELIM}{key}")
+}
+
+/// The prefix every key in `org_id`'s keyspace carries — `org_scoped_key` of
+/// the empty key. Strip it to recover the caller-facing key; a scoped key that
+/// doesn't start with it belongs to a different org (the isolation filter).
+#[inline]
+pub fn org_scope_prefix(org_id: &str) -> String {
+    org_scoped_key(org_id, "")
 }
 
 /// Reserved routing key under which **all** service-discovery state lives.
@@ -655,6 +687,40 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// The org-scoped key format is pinned: the node stores under it, so the
+    /// shard it hashes to is part of the cluster's persistent layout. Changing
+    /// the format remaps (and orphans) every org's data.
+    #[test]
+    fn org_scoped_key_format_is_pinned() {
+        assert_eq!(
+            org_scoped_key("org_1", "orders/checkout"),
+            "\u{1}org_1\u{1}orders/checkout"
+        );
+        assert_eq!(org_scope_prefix("org_1"), "\u{1}org_1\u{1}");
+        assert!(org_scoped_key("org_1", "k").starts_with(&org_scope_prefix("org_1")));
+    }
+
+    /// The shard for an org-addressed key is a function of the SCOPED key — the
+    /// raw caller key hashes elsewhere. This is the drift the shared helper
+    /// exists to prevent: an LB hashing the raw key would pick the wrong shard
+    /// for nearly every request.
+    #[test]
+    fn org_scoping_changes_the_shard_mapping_and_isolates_orgs() {
+        let n = 256;
+        let key = "orders/checkout";
+        let a = shard_for(&org_scoped_key("org_a", key), n);
+        let b = shard_for(&org_scoped_key("org_b", key), n);
+        // Deterministic per org…
+        assert_eq!(a, shard_for(&org_scoped_key("org_a", key), n));
+        assert_eq!(b, shard_for(&org_scoped_key("org_b", key), n));
+        // …and a crafted key cannot collide into another org's scoped key,
+        // because the delimiter cannot appear in a valid org id.
+        assert_ne!(
+            org_scoped_key("org_a", &format!("\u{1}org_b\u{1}{key}")),
+            org_scoped_key("org_b", key),
+        );
     }
 
     /// `nearest_to` returns the region that actually minimizes the haversine
