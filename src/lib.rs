@@ -232,10 +232,16 @@ pub fn shard_for_region(
 pub const DEFAULT_REGION_INDEX: u32 = 0;
 
 /// Resolve a region name to its index in an ordered region list (the order is
-/// the cluster order in `topology.toml`). Returns `None` for an unknown region.
+/// the cluster order in `topology.toml`). HTTP/header inputs commonly carry
+/// harmless surrounding whitespace or case differences, so matching is ASCII
+/// case-insensitive after trimming. Returns `None` for an unknown region.
 #[inline]
 pub fn region_index(region: &str, regions: &[&str]) -> Option<u32> {
-    regions.iter().position(|r| *r == region).map(|i| i as u32)
+    let region = region.trim();
+    regions
+        .iter()
+        .position(|candidate| candidate.eq_ignore_ascii_case(region))
+        .map(|i| i as u32)
 }
 
 /// Resolve a (possibly client-supplied, possibly unknown or empty) region name to
@@ -357,6 +363,8 @@ mod tests {
         let regions = ["gcp", "aws", "hetzner"];
         assert_eq!(region_index("gcp", &regions), Some(0));
         assert_eq!(region_index("hetzner", &regions), Some(2));
+        assert_eq!(region_index(" AWS ", &regions), Some(1));
+        assert_eq!(region_index("HeTzNeR", &regions), Some(2));
         assert_eq!(region_index("azure", &regions), None);
     }
 

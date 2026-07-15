@@ -28,10 +28,13 @@ pub fn region_index_or(region: &str, regions: &[&str], default: u32) -> u32;  //
 pub fn shard_for_region(region_index: u32, region_count: u32, key: &str, shard_count: u32) -> ShardId;
 ```
 
-An unrecognized or empty `X-Fiducia-Region` is **not** an error: resolve it with
-`region_index_or(region, regions, DEFAULT_REGION_INDEX)` so it degrades to the
-default region. (`shard_for_region` also clamps an out-of-range index to the last
-band, so routing is always valid.)
+Region matching trims surrounding whitespace and is ASCII case-insensitive so
+header spelling such as ` AWS ` resolves to the configured `aws` region instead
+of silently falling back. An unrecognized or empty `X-Fiducia-Region` is **not**
+an error: resolve it with `region_index_or(region, regions,
+DEFAULT_REGION_INDEX)` so it degrades to the default region.
+(`shard_for_region` also clamps an out-of-range index to the last band, so
+routing is always valid.)
 
 ### Use `route_shard` — don't accidentally region-shard a global key
 
