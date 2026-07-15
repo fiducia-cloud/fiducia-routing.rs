@@ -282,6 +282,13 @@ pub fn route_shard(
 ) -> ShardId {
     match scope {
         KeyScope::Global => shard_for(key, shard_count),
+        // An empty region list (or fewer shards than regions) makes regional
+        // banding impossible — degrade to GLOBAL routing rather than panic on a
+        // request path. Global is the safe direction: every caller still
+        // converges on the same shard; only leader locality is lost.
+        KeyScope::Regional if regions.is_empty() || shard_count < regions.len() as u32 => {
+            shard_for(key, shard_count)
+        }
         KeyScope::Regional => {
             let ri = region_index_or(region, regions, DEFAULT_REGION_INDEX);
             shard_for_region(ri, regions.len() as u32, key, shard_count)
@@ -392,6 +399,23 @@ mod tests {
         assert!((4..8).contains(&route_shard(KeyScope::Regional, "k", "aws", &regions, n)));
         // unknown region -> default band [0,4)
         assert!((0..4).contains(&route_shard(KeyScope::Regional, "k", "nope", &regions, n)));
+    }
+
+    #[test]
+    fn regional_routing_degrades_to_global_when_banding_is_impossible() {
+        // An empty region list must not panic a request path — it falls back to
+        // the region-agnostic hash (everyone still converges on one shard).
+        let n = 12;
+        assert_eq!(
+            route_shard(KeyScope::Regional, "k", "aws", &[], n),
+            shard_for("k", n)
+        );
+        // Fewer shards than regions likewise cannot band; same safe fallback.
+        let many = ["a", "b", "c", "d", "e"];
+        assert_eq!(
+            route_shard(KeyScope::Regional, "k", "b", &many, 3),
+            shard_for("k", 3)
+        );
     }
 
     #[test]
