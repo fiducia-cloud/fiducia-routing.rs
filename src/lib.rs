@@ -747,4 +747,21 @@ mod tests {
             assert_eq!(picked, Region::nearest_to(lat, lon));
         }
     }
+
+    #[test]
+    fn unknown_regional_routes_match_the_explicit_default_for_all_key_shapes() {
+        let regions = ["gcp", "aws", "hetzner"];
+        let long_key = "regional/".repeat(8_192);
+        for shard_count in [3u32, 4, 16, 257] {
+            for key in ["", "orders/结账", "a\0b", long_key.as_str()] {
+                let unknown =
+                    route_shard(KeyScope::Regional, key, "unknown", &regions, shard_count);
+                let explicit = route_shard(KeyScope::Regional, key, "gcp", &regions, shard_count);
+                assert_eq!(
+                    unknown, explicit,
+                    "unknown regions must stay in the configured primary band"
+                );
+            }
+        }
+    }
 }
