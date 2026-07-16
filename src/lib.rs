@@ -759,6 +759,31 @@ mod tests {
         assert!(org_scoped_key("org_1", "k").starts_with(&org_scope_prefix("org_1")));
     }
 
+    /// Escape-proofing: a hostile caller key that EMBEDS the scope delimiter
+    /// (trying to smuggle "\u{1}org-b\u{1}…" into its key) still lands inside
+    /// the caller's own namespace prefix and never inside the victim org's.
+    /// A crafted key must not be able to address another org's keyspace.
+    #[test]
+    fn hostile_delimiter_keys_cannot_escape_their_org_namespace() {
+        let hostile_keys = [
+            format!("{ORG_SCOPE_DELIM}org-b{ORG_SCOPE_DELIM}victim"),
+            format!("{ORG_SCOPE_DELIM}org-b{ORG_SCOPE_DELIM}"),
+            format!("x{ORG_SCOPE_DELIM}org-b{ORG_SCOPE_DELIM}victim"),
+            ORG_SCOPE_DELIM.to_string(),
+        ];
+        for key in &hostile_keys {
+            let scoped = org_scoped_key("org-a", key);
+            assert!(
+                scoped.starts_with(&org_scope_prefix("org-a")),
+                "scoped {scoped:?} must stay inside the caller's namespace"
+            );
+            assert!(
+                !scoped.starts_with(&org_scope_prefix("org-b")),
+                "scoped {scoped:?} must not address org-b's namespace"
+            );
+        }
+    }
+
     /// The shard for an org-addressed key is a function of the SCOPED key — the
     /// raw caller key hashes elsewhere. This is the drift the shared helper
     /// exists to prevent: an LB hashing the raw key would pick the wrong shard
@@ -802,6 +827,37 @@ mod tests {
                 );
             }
             assert_eq!(picked, Region::nearest_to(lat, lon));
+        }
+    }
+
+    /// Every region is its own nearest region at its home coordinates, and
+    /// both its stable API code and its backing cluster name (gcp/aws/hetzner)
+    /// parse back to it — the roundtrips customer routing and topology
+    /// generation rely on.
+    #[test]
+    fn every_region_is_nearest_to_its_own_home_and_roundtrips_its_names() {
+        for region in Region::ALL {
+            let (lat, lon) = region.approximate_coordinates();
+            assert_eq!(
+                Region::nearest_to(lat, lon),
+                region,
+                "{} must be the nearest region at its own home coordinates",
+                region.code()
+            );
+            assert!(
+                region.distance_km_to(lat, lon) < 1.0,
+                "a region is at distance ~0 from itself"
+            );
+            assert_eq!(
+                Region::parse(region.code()),
+                Some(region),
+                "the stable API code must parse back to the region"
+            );
+            assert_eq!(
+                Region::parse(region.cluster_name()),
+                Some(region),
+                "the backing cluster alias must parse back to the region"
+            );
         }
     }
 
