@@ -15,7 +15,7 @@ COPY . fiducia-routing.rs
 WORKDIR /build/fiducia-routing.rs
 RUN cargo build --locked --release --bin fiducia-region && strip target/release/fiducia-region
 
-FROM gcr.io/distroless/cc-debian12:nonroot@sha256:ce0d66bc0f64aae46e6a03add867b07f42cc7b8799c949c2e898057b7f75a151
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:66aa873a4a14fb164aa01296058efd8253744606d72715e45acface073359faa
 COPY --from=build --chown=65532:65532 /build/fiducia-routing.rs/target/release/fiducia-region /usr/local/bin/fiducia-region
 USER 65532:65532
 ENTRYPOINT ["/usr/local/bin/fiducia-region"]
