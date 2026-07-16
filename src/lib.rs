@@ -365,6 +365,31 @@ mod tests {
         assert_ne!(SERVICE_DISCOVERY_KEY, LOCK_COORDINATION_KEY);
     }
 
+    /// GOLDEN coordinator placements. The existing tests prove the mapping is
+    /// deterministic *within* a build; these pin the actual shard numbers
+    /// across builds. Changing either reserved key OR the hash silently moves
+    /// the lock/discovery coordinator to a different Raft group — for a live
+    /// cluster that is a data migration (every lock, semaphore, and service
+    /// registration strands on the old shard). If this test fails, you are
+    /// making that migration: stop and plan it, don't update the numbers.
+    #[test]
+    fn coordinator_shard_placements_are_frozen() {
+        for (shard_count, lock_shard, discovery_shard) in
+            [(16u32, 15u32, 9u32), (256, 223, 233), (1024, 223, 233)]
+        {
+            assert_eq!(
+                lock_coordination_shard(shard_count),
+                lock_shard,
+                "lock coordinator moved for shard_count={shard_count}"
+            );
+            assert_eq!(
+                service_discovery_shard(shard_count),
+                discovery_shard,
+                "discovery coordinator moved for shard_count={shard_count}"
+            );
+        }
+    }
+
     #[test]
     fn region_index_lookup() {
         let regions = ["gcp", "aws", "hetzner"];
