@@ -38,6 +38,6 @@ jobs:
           provenance: mode=max
           sbom: true
           build-args: |
-            INTERFACES_REF=2c5c806174e067fbe83ad48b724366323ba390a2
+            INTERFACES_REF=bd718cd72d72aa330534f3688f8fb1ce90c19d10
           tags: |
             ghcr.io/fiducia-cloud/fiducia-routing:${{ github.sha }}
