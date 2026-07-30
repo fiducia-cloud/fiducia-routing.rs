@@ -1,0 +1,46 @@
+schema_version = 1
+id = "fiducia-routing-contract"
+repository = "fiducia-cloud/fiducia-routing.rs"
+issue = "DEN-80"
+model = "formal/model.py"
+runner = "python3"
+adapter_protocol = "json-stdin/v1"
+command = ["python3", "formal/model.py"]
+replay_command = ["python3", "formal/model.py", "--json-stdin"]
+claim = "finite-exhaustive-abstraction"
+timeout_seconds = 30
+
+[limits]
+keys = 8
+organizations = 4
+regions = 3
+shard_counts = 11
+
+[[invariants]]
+id = "route-in-range"
+description = "Every successful routing decision is within [0, shard_count)."
+
+[[invariants]]
+id = "global-region-independence"
+description = "Global keys route identically for every valid, unknown, and empty region input."
+
+[[invariants]]
+id = "regional-band-containment"
+description = "Regional keys remain inside the selected contiguous shard band when banding is possible."
+
+[[invariants]]
+id = "safe-global-fallback"
+description = "Impossible regional configurations degrade to the globally convergent route instead of splitting or panicking."
+
+[[invariants]]
+id = "org-scope-injective"
+description = "Bounded organization/key pairs cannot alias after frozen delimiter framing."
+
+[[invariants]]
+id = "coordinator-placement-frozen"
+description = "Lock and service-discovery coordinator keys retain the checked production golden placements."
+
+[refinement]
+status = "required"
+production_paths = ["src/lib.rs"]
+notes = "The Python model mirrors the frozen routing contract; Rust unit/golden tests remain the production refinement gate."
