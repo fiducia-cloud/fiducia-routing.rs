@@ -1,0 +1,34 @@
+[package]
+org = "fiducia"
+name = "fiducia-routing"
+version = "0.1.0"
+description = "Shared key-to-shard routing library and fiducia-region operator CLI"
+license = "UNLICENSED"
+keywords = ["routing", "sharding", "regions", "coordination", "rust"]
+language = "rust"
+
+[package.repository]
+vcs = "git"
+url = "https://github.com/fiducia-cloud/fiducia-routing.rs"
+
+[dependencies]
+"fiducia/fiducia-interfaces" = "^0.1.0"
+
+[build]
+command = "cargo build --release --locked --bin fiducia-region"
+outputs = ["target/release/fiducia-region"]
+
+[bin]
+fiducia-region = "target/release/fiducia-region"
+
+[publish]
+include_readme = true
+tag_format = "v{version}"
+smoke_test = "cargo test --manifest-path \"$ZED_PKG_TEST_TARGET/Cargo.toml\" --locked && test -x \"$ZED_PKG_TEST_TARGET/target/release/fiducia-region\" && \"$ZED_PKG_TEST_TARGET/target/release/fiducia-region\" --help >/dev/null"
+exclude = [".env", ".env.*", ".direnv/**", ".zed/**", ".zed-pack/**", "target/**", "tmp/**", "**/*.log", ".DS_Store"]
+
+[install]
+adapter = "rust"
+
+[scripts]
+test = "cargo test --all-targets --locked"
