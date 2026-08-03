@@ -1,6 +1,5 @@
 use fiducia_routing::{
-    fnv1a, org_scope_prefix, org_scoped_key, route_shard, shard_for, KeyScope,
-    ORG_SCOPE_DELIM,
+    fnv1a, org_scope_prefix, org_scoped_key, route_shard, shard_for, KeyScope, ORG_SCOPE_DELIM,
 };
 
 #[test]
@@ -54,13 +53,7 @@ fn global_routes_ignore_all_region_metadata_shapes() {
     for regions in region_sets {
         for supplied_region in ["gcp", "aws", "unknown", "", "  HETZNER  "] {
             assert_eq!(
-                route_shard(
-                    KeyScope::Global,
-                    key,
-                    supplied_region,
-                    regions,
-                    shard_count,
-                ),
+                route_shard(KeyScope::Global, key, supplied_region, regions, shard_count,),
                 expected,
                 "global authority must never split because of client region metadata"
             );
@@ -74,27 +67,9 @@ fn uneven_regional_bands_are_disjoint_and_unknown_defaults_to_primary() {
     let shard_count = 10u32; // [0,3), [3,6), [6,10); last absorbs remainder.
 
     for key in ["orders/1", "orders/结账", "sessions/user-42", "🔒"] {
-        let central = route_shard(
-            KeyScope::Regional,
-            key,
-            "gcp",
-            &regions,
-            shard_count,
-        );
-        let east = route_shard(
-            KeyScope::Regional,
-            key,
-            "aws",
-            &regions,
-            shard_count,
-        );
-        let europe = route_shard(
-            KeyScope::Regional,
-            key,
-            "hetzner",
-            &regions,
-            shard_count,
-        );
+        let central = route_shard(KeyScope::Regional, key, "gcp", &regions, shard_count);
+        let east = route_shard(KeyScope::Regional, key, "aws", &regions, shard_count);
+        let europe = route_shard(KeyScope::Regional, key, "hetzner", &regions, shard_count);
 
         assert!((0..3).contains(&central));
         assert!((3..6).contains(&east));
