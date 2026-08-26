@@ -15,7 +15,7 @@ COPY . fiducia-routing.rs
 WORKDIR /build/fiducia-routing.rs
 RUN cargo build --locked --release --bin fiducia-region && strip target/release/fiducia-region
 
-FROM gcr.io/distroless/cc-debian12:nonroot@sha256:adcd20c7b4c988b73cbfbddb26d2eee574571e6d7c9ffea29b3821e0690efb77
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f
 COPY --from=build --chown=65532:65532 /build/fiducia-routing.rs/target/release/fiducia-region /usr/local/bin/fiducia-region
 USER 65532:65532
 # --- sops: this final stage has no shell (distroless/scratch), so runtime
