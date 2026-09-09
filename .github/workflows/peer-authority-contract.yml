@@ -1,0 +1,72 @@
+name: peer-authority routing replay contract
+
+on:
+  pull_request:
+    paths:
+      - 'contracts/**'
+      - 'formal/**'
+      - 'src/lib.rs'
+      - '.github/workflows/peer-authority-contract.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'contracts/**'
+      - 'formal/**'
+      - 'src/lib.rs'
+      - '.github/workflows/peer-authority-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: peer-authority-contract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out the exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+          show-progress: false
+
+      - name: Verify exact checkout and authority paths
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -f contracts/typespec/main.tsp
+          test -f contracts/json-schema/contract.schema.json
+          test -d contracts/instances
+
+      - name: Compare independent TypeSpec and JSON Schema authorities
+        uses: ORESoftware/typespec-json-schema-validator@2281843126ab644607b11cf8281d84f382d68dfc
+        with:
+          typespec: contracts/typespec/main.tsp
+          schema: contracts/json-schema/contract.schema.json
+          instances: contracts/instances
+          report: target/typespec-json-schema-validator/report.json
+          sarif: target/typespec-json-schema-validator/report.sarif
+          contract_ir: target/typespec-json-schema-validator/contract-ir.json
+          output_dir: target/typespec-json-schema-validator/generated-schema-b
+          max_probes: '128'
+
+      - name: Verify authored authorities were not rewritten
+        run: git diff --exit-code -- contracts/typespec/main.tsp contracts/json-schema/contract.schema.json contracts/instances
+
+      - name: Upload deterministic parity evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: peer-authority-contract-${{ github.sha }}
+          path: target/typespec-json-schema-validator/
+          if-no-files-found: error
+          retention-days: 30

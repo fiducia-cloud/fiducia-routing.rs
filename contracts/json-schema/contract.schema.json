@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "fiducia.routing.contract.schema.json",
+  "$defs": {
+    "RoutingScope": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "RoutingScope",
+      "type": "string",
+      "enum": ["global", "regional"]
+    },
+    "HashRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "HashRequest",
+      "type": "object",
+      "properties": {
+        "op": { "type": "string", "const": "hash" },
+        "key": { "type": "string" }
+      },
+      "required": ["op", "key"],
+      "unevaluatedProperties": false
+    },
+    "ShardRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "ShardRequest",
+      "type": "object",
+      "properties": {
+        "op": { "type": "string", "const": "shard" },
+        "key": { "type": "string" },
+        "shard_count": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 }
+      },
+      "required": ["op", "key", "shard_count"],
+      "unevaluatedProperties": false
+    },
+    "ScopeRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "ScopeRequest",
+      "type": "object",
+      "properties": {
+        "op": { "type": "string", "const": "scope" },
+        "org_id": { "type": "string" },
+        "key": { "type": "string" }
+      },
+      "required": ["op", "org_id", "key"],
+      "unevaluatedProperties": false
+    },
+    "RouteRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "RouteRequest",
+      "type": "object",
+      "properties": {
+        "op": { "type": "string", "const": "route" },
+        "scope": { "$ref": "RoutingScope" },
+        "key": { "type": "string" },
+        "region": { "type": "string" },
+        "regions": { "type": "array", "items": { "type": "string" } },
+        "shard_count": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 }
+      },
+      "required": ["op", "scope", "key", "shard_count"],
+      "unevaluatedProperties": false
+    },
+    "HashResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "HashResult",
+      "type": "object",
+      "properties": {
+        "schema_version": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "line": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "op": { "type": "string", "const": "hash" },
+        "result": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 }
+      },
+      "required": ["schema_version", "line", "op", "result"],
+      "unevaluatedProperties": false
+    },
+    "ShardResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "ShardResult",
+      "type": "object",
+      "properties": {
+        "schema_version": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "line": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "op": { "type": "string", "const": "shard" },
+        "result": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 }
+      },
+      "required": ["schema_version", "line", "op", "result"],
+      "unevaluatedProperties": false
+    },
+    "ScopeResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "ScopeResult",
+      "type": "object",
+      "properties": {
+        "schema_version": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "line": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "op": { "type": "string", "const": "scope" },
+        "result": { "type": "string" }
+      },
+      "required": ["schema_version", "line", "op", "result"],
+      "unevaluatedProperties": false
+    },
+    "RouteResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "RouteResult",
+      "type": "object",
+      "properties": {
+        "schema_version": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "line": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "op": { "type": "string", "const": "route" },
+        "result": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 }
+      },
+      "required": ["schema_version", "line", "op", "result"],
+      "unevaluatedProperties": false
+    }
+  }
+}

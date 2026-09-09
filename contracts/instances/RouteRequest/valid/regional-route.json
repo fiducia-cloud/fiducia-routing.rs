@@ -1,0 +1,8 @@
+{
+  "op": "route",
+  "scope": "regional",
+  "key": "orders/42",
+  "region": "aws",
+  "regions": ["gcp", "aws", "hetzner"],
+  "shard_count": 16
+}
