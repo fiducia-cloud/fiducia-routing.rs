@@ -1,0 +1,5 @@
+{
+  "op": "route",
+  "scope": "regional",
+  "key": "orders/42"
+}
