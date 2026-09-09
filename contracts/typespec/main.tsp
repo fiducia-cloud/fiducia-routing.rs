@@ -11,27 +11,27 @@ enum RoutingScope {
 
 @id("HashRequest")
 model HashRequest {
-  op: "hash";
+  `op`: "hash";
   key: string;
 }
 
 @id("ShardRequest")
 model ShardRequest {
-  op: "shard";
+  `op`: "shard";
   key: string;
   shard_count: int32;
 }
 
 @id("ScopeRequest")
 model ScopeRequest {
-  op: "scope";
+  `op`: "scope";
   org_id: string;
   key: string;
 }
 
 @id("RouteRequest")
 model RouteRequest {
-  op: "route";
+  `op`: "route";
   scope: RoutingScope;
   key: string;
   region?: string;
@@ -43,7 +43,7 @@ model RouteRequest {
 model HashResult {
   schema_version: int32;
   line: int32;
-  op: "hash";
+  `op`: "hash";
   result: int32;
 }
 
@@ -51,7 +51,7 @@ model HashResult {
 model ShardResult {
   schema_version: int32;
   line: int32;
-  op: "shard";
+  `op`: "shard";
   result: int32;
 }
 
@@ -59,7 +59,7 @@ model ShardResult {
 model ScopeResult {
   schema_version: int32;
   line: int32;
-  op: "scope";
+  `op`: "scope";
   result: string;
 }
 
@@ -67,6 +67,6 @@ model ScopeResult {
 model RouteResult {
   schema_version: int32;
   line: int32;
-  op: "route";
+  `op`: "route";
   result: int32;
 }
