@@ -26,6 +26,11 @@
 /// Identifier of a shard (one independent Raft group).
 pub type ShardId = u32;
 
+/// Versioned lock/semaphore coordination-domain routing. The legacy global
+/// coordinator remains the default until every routing participant explicitly
+/// migrates to DomainV1.
+pub mod lock_coordination;
+
 /// Map a key to its shard.
 ///
 /// # Panics
