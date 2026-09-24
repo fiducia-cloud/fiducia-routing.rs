@@ -170,8 +170,8 @@ mod tests {
         let short = lock_coordination_domain_key(LockCoordinationDomain::Tenant("a\0bc"));
         let other = lock_coordination_domain_key(LockCoordinationDomain::Tenant("a\0b\0c"));
         assert_ne!(short, other);
-        assert!(short.contains("\0tenant\04\0"));
-        assert!(other.contains("\0tenant\05\0"));
+        assert!(short.contains("\0tenant\0\x34\0"));
+        assert!(other.contains("\0tenant\0\x35\0"));
     }
 
     /// Golden vectors pin DomainV1 before any production caller enables it.
