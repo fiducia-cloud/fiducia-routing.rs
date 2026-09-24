@@ -17,15 +17,22 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
+    env:
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+          show-progress: false
           path: repo
+      - name: Assert exact reviewed head
+        working-directory: repo
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
       - name: Validate GitHub Actions
         uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
         with:
@@ -43,6 +50,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          show-progress: false
           repository: fiducia-cloud/fiducia-interfaces
           ref: bd718cd72d72aa330534f3688f8fb1ce90c19d10
           path: fiducia-interfaces
