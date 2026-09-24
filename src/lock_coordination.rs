@@ -181,8 +181,7 @@ mod tests {
     fn domain_v1_golden_vectors_are_frozen() {
         let tenant_a = lock_coordination_domain_key(LockCoordinationDomain::Tenant("org_a"));
         let tenant_b = lock_coordination_domain_key(LockCoordinationDomain::Tenant("org_b"));
-        let shared =
-            lock_coordination_domain_key(LockCoordinationDomain::Shared("workspace-7"));
+        let shared = lock_coordination_domain_key(LockCoordinationDomain::Shared("workspace-7"));
         let system = lock_coordination_domain_key(LockCoordinationDomain::System("cron"));
 
         assert_eq!(fnv1a(&tenant_a), 0xd02d_e878);
