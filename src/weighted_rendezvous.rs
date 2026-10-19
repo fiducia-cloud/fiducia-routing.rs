@@ -57,7 +57,7 @@ pub fn place<'a>(partition:u32,nodes:&'a[Node<'a>],replicas:usize)->Result<Place
  use super::*;
  fn a()->Vec<Node<'static>>{vec![Node{id:"a",failure_domain:"d1",weight:1,lifecycle:Lifecycle::Active},Node{id:"b",failure_domain:"d2",weight:1,lifecycle:Lifecycle::Active}]}
  #[test]fn reordering_nodes_does_not_change_rank(){
-  for p in 0..1000 {let mut n=a();let x=place(p,&n,1).unwrap();n.reverse();assert_eq!(x,place(p,&n,1).unwrap());}
+  for p in 0..1000 {let mut n=a();let x=place(p,&n,1).unwrap();let original=x.primary.to_owned();let original_replicas=x.replicas.iter().map(|x|x.to_string()).collect::<Vec<_>>();n.reverse();let reversed=place(p,&n,1).unwrap();assert_eq!(original,reversed.primary);assert_eq!(original_replicas,reversed.replicas);}
  }
  #[test]fn removal_only_moves_partitions_previously_owned(){
   let mut n=a();n.push(Node{id:"c",failure_domain:"d3",weight:1,lifecycle:Lifecycle::Active});
