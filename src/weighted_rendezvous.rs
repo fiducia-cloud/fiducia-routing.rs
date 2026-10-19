@@ -63,7 +63,8 @@ pub fn place<'a>(partition:u32,nodes:&'a[Node<'a>],replicas:usize)->Result<Place
   let mut n=a();n.push(Node{id:"c",failure_domain:"d3",weight:1,lifecycle:Lifecycle::Active});
   for p in 0..1000 {
    let before=place(p,&n,0).unwrap().primary;
-   let after=place(p,&a(),0).unwrap().primary;
+   let remaining=a();
+   let after=place(p,&remaining,0).unwrap().primary;
    if before!="c"{assert_eq!(before,after);}
   }
  }
