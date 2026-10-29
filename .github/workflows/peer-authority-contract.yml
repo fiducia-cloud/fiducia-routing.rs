@@ -48,7 +48,7 @@ jobs:
           test -d contracts/instances
 
       - name: Compare independent TypeSpec and JSON Schema authorities
-        uses: ORESoftware/typespec-json-schema-validator@5fdbeaf57d582b69126c6e1a0623b43bc2a25d04
+        uses: ORESoftware/typespec-json-schema-validator@2d3b187aec68477cff579f2f3a9275ea5ef62f88
         with:
           typespec: contracts/typespec/main.tsp
           schema: contracts/json-schema/contract.schema.json
