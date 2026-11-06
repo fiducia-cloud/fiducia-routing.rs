@@ -1,12 +1,12 @@
 //! Cross-component lock-domain routing invariants over adversarial identifier
 //! bytes. This is intentionally independent of the primary module's unit tests.
 use fiducia_routing::{
-    fnv1a, lock_coordination_shard, org_scoped_key, route_shard, shard_for,
+    fnv1a,
     lock_coordination::{
-        lock_coordination_domain_key, lock_coordination_shard_for,
-        LockCoordinationDomain, LockRoutingMode, LOCK_COORDINATION_DOMAIN_V1_PREFIX,
+        lock_coordination_domain_key, lock_coordination_shard_for, LockCoordinationDomain,
+        LockRoutingMode, LOCK_COORDINATION_DOMAIN_V1_PREFIX,
     },
-    KeyScope,
+    lock_coordination_shard, org_scoped_key, route_shard, shard_for, KeyScope,
 };
 
 #[test]
@@ -27,8 +27,14 @@ fn framed_authority_keys_preserve_utf8_byte_length_and_domain_kind() {
             assert!(actual.starts_with('\0'));
         }
         let tenant = lock_coordination_domain_key(LockCoordinationDomain::Tenant(id));
-        assert_ne!(tenant, lock_coordination_domain_key(LockCoordinationDomain::Shared(id)));
-        assert_ne!(tenant, lock_coordination_domain_key(LockCoordinationDomain::System(id)));
+        assert_ne!(
+            tenant,
+            lock_coordination_domain_key(LockCoordinationDomain::Shared(id))
+        );
+        assert_ne!(
+            tenant,
+            lock_coordination_domain_key(LockCoordinationDomain::System(id))
+        );
     }
     assert_ne!(
         lock_coordination_domain_key(LockCoordinationDomain::Tenant("é")),
@@ -48,11 +54,7 @@ fn legacy_mode_cannot_be_selected_into_an_untrusted_tenant_shard() {
                 LockCoordinationDomain::System(id),
             ] {
                 assert_eq!(
-                    lock_coordination_shard_for(
-                        LockRoutingMode::LegacyGlobal,
-                        domain,
-                        shard_count
-                    ),
+                    lock_coordination_shard_for(LockRoutingMode::LegacyGlobal, domain, shard_count),
                     reserved,
                     "legacy locks must never move with supplied domain labels"
                 );
@@ -72,11 +74,7 @@ fn domain_v1_placement_matches_independent_canonical_key_hash() {
             ] {
                 let framed = lock_coordination_domain_key(domain);
                 assert_eq!(
-                    lock_coordination_shard_for(
-                        LockRoutingMode::DomainV1,
-                        domain,
-                        shard_count
-                    ),
+                    lock_coordination_shard_for(LockRoutingMode::DomainV1, domain, shard_count),
                     fnv1a(&framed) % shard_count
                 );
             }
