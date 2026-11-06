@@ -88,3 +88,89 @@ fn regional_header_defaults_do_not_change_explicitly_selected_global_route() {
         }
     }
 }
+
+
+// Wave50: preserve the public routing ABI under independent negative inputs.
+#[test]
+fn wave50_region_aliases_normalize_without_accepting_prefix_spoofs() {
+    use fiducia_routing::Region;
+    for (input, expected) in [
+        (" GCP ", Region::UsCentral1),
+        ("uS-CeNtRaL", Region::UsCentral1),
+        ("us-east", Region::UsEast1),
+        (" AWS ", Region::UsEast1),
+        ("eu-central-1", Region::EuCentral),
+        ("Hetzner", Region::EuCentral),
+    ] {
+        assert_eq!(Region::parse(input), Some(expected), "{input}");
+    }
+    for invalid in ["gcp-extra", "aws.example", "eu-central1", "gcp\naws", ""] {
+        assert_eq!(Region::parse(invalid), None, "{invalid}");
+    }
+}
+
+#[test]
+fn wave50_utf8_framing_hashes_bytes_not_unicode_code_points() {
+    for key in ["", "a\0b", "café", "☃️", "🚀/東京", "\u{1}tenant\u{1}🔒"] {
+        let independent = key.as_bytes().iter().fold(0x811c_9dc5_u32, |hash, byte| {
+            (hash ^ u32::from(*byte)).wrapping_mul(0x0100_0193)
+        });
+        assert_eq!(fiducia_routing::fnv1a(key), independent, "{key:?}");
+        for count in [1, 2, 3, 17, 257, 1024] {
+            assert_eq!(shard_for(key, count), independent % count);
+        }
+    }
+}
+
+#[test]
+fn wave50_org_prefix_enforces_exact_tenant_boundary() {
+    use fiducia_routing::{org_scope_prefix, org_scoped_key};
+    for (tenant, neighboring) in [
+        ("acme", "acme-2"),
+        ("a", "ab"),
+        ("日本語", "日本語2"),
+        ("tenant/one", "tenant"),
+    ] {
+        let prefix = org_scope_prefix(tenant);
+        let scoped = org_scoped_key(tenant, "📦/\0record");
+        let neighbor = org_scoped_key(neighboring, "📦/\0record");
+        assert!(scoped.starts_with(&prefix));
+        assert!(!neighbor.starts_with(&prefix));
+        assert_eq!(scoped.strip_prefix(&prefix), Some("📦/\0record"));
+    }
+}
+
+#[test]
+fn wave50_disjoint_regional_bands_remain_disjoint_under_uneven_counts() {
+    for regions in [2_u32, 3, 5, 7] {
+        for extra in [0_u32, 1, 2, 3, 11, 53] {
+            let shards = regions + extra;
+            let band = shards / regions;
+            for ri in 0..regions {
+                let start = ri * band;
+                let end = if ri + 1 == regions { shards } else { start + band };
+                for key in ["", "a", "Ω", "tenant/\0state", "📦"] {
+                    let actual = shard_for_region(ri, regions, key, shards);
+                    assert!(actual >= start && actual < end, "{regions}/{shards}/{ri}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn wave50_region_header_normalization_preserves_exact_shard_choice() {
+    let regions = ["gcp", "aws", "hetzner"];
+    for (normalized, aliases) in [
+        ("gcp", ["GCP", " gcp ", "GcP"]),
+        ("aws", ["AWS", " aWs ", "aws"]),
+        ("hetzner", ["HETZNER", " Hetzner ", "hetzner"]),
+    ] {
+        for key in ["", "tenant/∂", "locks/global", "\0coordinator"] {
+            let target = route_shard(KeyScope::Regional, key, normalized, &regions, 103);
+            for alias in aliases {
+                assert_eq!(route_shard(KeyScope::Regional, key, alias, &regions, 103), target);
+            }
+        }
+    }
+}
