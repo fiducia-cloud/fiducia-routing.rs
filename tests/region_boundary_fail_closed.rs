@@ -89,7 +89,6 @@ fn regional_header_defaults_do_not_change_explicitly_selected_global_route() {
     }
 }
 
-
 // Wave50: preserve the public routing ABI under independent negative inputs.
 #[test]
 fn wave50_region_aliases_normalize_without_accepting_prefix_spoofs() {
@@ -148,7 +147,11 @@ fn wave50_disjoint_regional_bands_remain_disjoint_under_uneven_counts() {
             let band = shards / regions;
             for ri in 0..regions {
                 let start = ri * band;
-                let end = if ri + 1 == regions { shards } else { start + band };
+                let end = if ri + 1 == regions {
+                    shards
+                } else {
+                    start + band
+                };
                 for key in ["", "a", "Ω", "tenant/\0state", "📦"] {
                     let actual = shard_for_region(ri, regions, key, shards);
                     assert!(actual >= start && actual < end, "{regions}/{shards}/{ri}");
@@ -169,7 +172,10 @@ fn wave50_region_header_normalization_preserves_exact_shard_choice() {
         for key in ["", "tenant/∂", "locks/global", "\0coordinator"] {
             let target = route_shard(KeyScope::Regional, key, normalized, &regions, 103);
             for alias in aliases {
-                assert_eq!(route_shard(KeyScope::Regional, key, alias, &regions, 103), target);
+                assert_eq!(
+                    route_shard(KeyScope::Regional, key, alias, &regions, 103),
+                    target
+                );
             }
         }
     }
