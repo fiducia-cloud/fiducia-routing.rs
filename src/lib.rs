@@ -30,6 +30,8 @@ pub type ShardId = u32;
 /// coordinator remains the default until every routing participant explicitly
 /// migrates to DomainV1.
 pub mod lock_coordination;
+/// Opt-in versioned logical partition and weighted rendezvous candidate.
+pub mod weighted_rendezvous;
 
 /// Map a key to its shard.
 ///
